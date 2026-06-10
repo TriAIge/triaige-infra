@@ -103,3 +103,64 @@ key-*.pem
 key-*.ppk
 key-*.pem.pub
 *.json
+
+# ======================================
+# Terraform
+# ======================================
+*.tfstate
+*.tfstate.*
+.crash
+.terraform/
+.terraform.lock.hcl
+*.backup
+*.log
+
+# Sensível: variáveis ou arquivos locais
+terraform.tfvars
+*.auto.tfvars
+*.pem
+*.key
+*.pub
+
+# Evita salvar os outputs se forem criados como arquivos
+outputs*.json
+
+# ======================================
+# Ansible
+# ======================================
+
+# Arquivos sensíveis ou gerados por script
+ansible/files/*.pem
+ansible/files/*.json
+ansible/files/*.key
+ansible/files/script.sql
+
+# Cache do Ansible
+*.retry
+*.log
+__pycache__/
+*.pyc
+
+# Inventários dinâmicos gerados
+inventory_dynamic.json
+
+# ======================================
+# Sistema / IDEs / SO
+# ======================================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# VSCode / IntelliJ / Eclipse / etc.
+.vscode/
+.idea/
+*.iml
+
+# Keys
+*.ppk
+*.pem.pub
+key-*.pem
+key-*.ppk
+key-*.pem.pub
+*.json

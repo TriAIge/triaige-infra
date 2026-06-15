@@ -1,0 +1,188 @@
+# Playbook de deploy dos servicos TriAIge (perfil prod) nas EC2 publicas.
+#
+# Sobe, em cada EC2 publica (ec2-public-triaige-us-east-1a e -1b):
+#   - triaige-srv-ai          (porta 8082)
+#   - triaige-srv-orchestrator (porta 8080)
+#
+# As imagens sao construidas localmente em cada instancia a partir do
+# Dockerfile de cada repositorio (git clone + docker build), sem depender de
+# nenhum registry (ECR ou outro).
+#
+# Variaveis esperadas (via --extra-vars, geradas no workflow a partir dos
+# outputs do Terraform e de Secrets do GitHub):
+#   github_token                 - token para clonar os repos *-config (privados)
+#   db_host                      - IP privado da ec2-private-banco-dados
+#   db_username / db_password    - credenciais do MySQL (perfil prod)
+#   aws_region                   - regiao AWS (us-east-1)
+#   docs_received_queue_url
+#   docs_preprocessing_queue_url
+#   results_ready_queue_url
+#   raw_documents_bucket
+#   curated_results_bucket
+#   ai_service_base_url          - URL do srv-ai a partir do srv-orchestrator
+#   gemini_api_key                - chave Gemini de producao
+
+- name: Aguardar SSH disponivel nas EC2 publicas
+  hosts: triaige_public
+  gather_facts: false
+  tasks:
+    - name: Esperar conexao SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+        delay: 5
+
+- name: Subir triaige-srv-ai e triaige-srv-orchestrator
+  hosts: triaige_public
+  become: true
+  vars:
+    apps_dir: /opt/triaige
+    config_dir: /etc/triaige
+    github_org: TriAIge
+
+  tasks:
+    - name: Atualizar cache apt
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Instalar dependencias basicas (git, curl)
+      ansible.builtin.apt:
+        name:
+          - git
+          - ca-certificates
+          - curl
+        state: present
+
+    - name: Instalar Docker (script oficial get.docker.com)
+      ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
+      args:
+        creates: /usr/bin/docker
+
+    - name: Garantir que o servico Docker esta ativo
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Criar diretorios de apps e config
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ apps_dir }}"
+        - "{{ config_dir }}/triaige-srv-ai-config"
+        - "{{ config_dir }}/triaige-srv-orchestrator-config"
+
+    # ── triaige-srv-ai ──────────────────────────────────────────────────────
+    - name: Clonar/atualizar triaige-srv-ai
+      ansible.builtin.git:
+        repo: "https://github.com/{{ github_org }}/triaige-srv-ai.git"
+        dest: "{{ apps_dir }}/triaige-srv-ai"
+        version: main
+        force: true
+
+    - name: Clonar/atualizar triaige-srv-ai-config
+      ansible.builtin.git:
+        repo: "https://x-access-token:{{ github_token }}@github.com/{{ github_org }}/triaige-srv-ai-config.git"
+        dest: "{{ apps_dir }}/triaige-srv-ai-config"
+        version: main
+        force: true
+      no_log: true
+
+    - name: Renderizar application-prod.yml (srv-ai) a partir do .example
+      ansible.builtin.copy:
+        src: "{{ apps_dir }}/triaige-srv-ai-config/application-prod.yml.example"
+        dest: "{{ config_dir }}/triaige-srv-ai-config/application-prod.yml"
+        remote_src: true
+        mode: "0640"
+
+    - name: Preencher GEMINI_API_KEY em application-prod.yml (srv-ai)
+      ansible.builtin.replace:
+        path: "{{ config_dir }}/triaige-srv-ai-config/application-prod.yml"
+        regexp: 'SUBSTITUA_PELA_CHAVE_GEMINI_DE_PRODUCAO'
+        replace: "{{ gemini_api_key }}"
+      no_log: true
+
+    - name: Build da imagem triaige-srv-ai
+      ansible.builtin.command: docker build -t triaige-srv-ai:latest .
+      args:
+        chdir: "{{ apps_dir }}/triaige-srv-ai"
+
+    - name: Remover container anterior triaige-srv-ai
+      ansible.builtin.command: docker rm -f triaige-srv-ai
+      register: rm_srv_ai
+      failed_when: false
+      changed_when: rm_srv_ai.rc == 0
+
+    - name: Subir container triaige-srv-ai
+      ansible.builtin.command: >
+        docker run -d --name triaige-srv-ai
+        --restart unless-stopped
+        --network host
+        -e SPRING_PROFILES_ACTIVE=prod
+        -e CONFIG_REPO_PATH=/config/
+        -v {{ config_dir }}/triaige-srv-ai-config:/config:ro
+        triaige-srv-ai:latest
+
+    # ── triaige-srv-orchestrator ────────────────────────────────────────────
+    - name: Clonar/atualizar triaige-srv-orchestrator
+      ansible.builtin.git:
+        repo: "https://github.com/{{ github_org }}/triaige-srv-orchestrator.git"
+        dest: "{{ apps_dir }}/triaige-srv-orchestrator"
+        version: main
+        force: true
+
+    - name: Clonar/atualizar triaige-srv-orchestrator-config
+      ansible.builtin.git:
+        repo: "https://x-access-token:{{ github_token }}@github.com/{{ github_org }}/triaige-srv-orchestrator-config.git"
+        dest: "{{ apps_dir }}/triaige-srv-orchestrator-config"
+        version: main
+        force: true
+      no_log: true
+
+    - name: Renderizar application-prod.yml (srv-orchestrator) a partir do .example
+      ansible.builtin.copy:
+        src: "{{ apps_dir }}/triaige-srv-orchestrator-config/application-prod.yml.example"
+        dest: "{{ config_dir }}/triaige-srv-orchestrator-config/application-prod.yml"
+        remote_src: true
+        mode: "0640"
+
+    - name: Substituir placeholders em application-prod.yml (srv-orchestrator)
+      ansible.builtin.replace:
+        path: "{{ config_dir }}/triaige-srv-orchestrator-config/application-prod.yml"
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      loop:
+        - { regexp: "__DB_HOST__", replace: "{{ db_host }}" }
+        - { regexp: "__DB_USERNAME__", replace: "{{ db_username }}" }
+        - { regexp: "__DB_PASSWORD__", replace: "{{ db_password }}" }
+        - { regexp: "__AWS_REGION__", replace: "{{ aws_region }}" }
+        - { regexp: "__DOCS_RECEIVED_QUEUE_URL__", replace: "{{ docs_received_queue_url }}" }
+        - { regexp: "__DOCS_PREPROCESSING_QUEUE_URL__", replace: "{{ docs_preprocessing_queue_url }}" }
+        - { regexp: "__RESULTS_READY_QUEUE_URL__", replace: "{{ results_ready_queue_url }}" }
+        - { regexp: "__RAW_DOCUMENTS_BUCKET__", replace: "{{ raw_documents_bucket }}" }
+        - { regexp: "__CURATED_RESULTS_BUCKET__", replace: "{{ curated_results_bucket }}" }
+        - { regexp: "__AI_SERVICE_BASE_URL__", replace: "{{ ai_service_base_url }}" }
+      no_log: true
+
+    - name: Build da imagem triaige-srv-orchestrator
+      ansible.builtin.command: docker build -t triaige-srv-orchestrator:latest .
+      args:
+        chdir: "{{ apps_dir }}/triaige-srv-orchestrator"
+
+    - name: Remover container anterior triaige-srv-orchestrator
+      ansible.builtin.command: docker rm -f triaige-srv-orchestrator
+      register: rm_srv_orchestrator
+      failed_when: false
+      changed_when: rm_srv_orchestrator.rc == 0
+
+    - name: Subir container triaige-srv-orchestrator
+      ansible.builtin.command: >
+        docker run -d --name triaige-srv-orchestrator
+        --restart unless-stopped
+        --network host
+        -e SPRING_PROFILES_ACTIVE=prod
+        -e CONFIG_REPO_PATH=/config/
+        -v {{ config_dir }}/triaige-srv-orchestrator-config:/config:ro
+        triaige-srv-orchestrator:latest

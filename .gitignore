@@ -82,6 +82,8 @@ __pycache__/
 
 # Inventários dinâmicos gerados
 inventory_dynamic.json
+ansible/inventory.ini
+ansible/tfout.json
 
 # ======================================
 # Sistema / IDEs / SO
@@ -143,6 +145,8 @@ __pycache__/
 
 # Inventários dinâmicos gerados
 inventory_dynamic.json
+ansible/inventory.ini
+ansible/tfout.json
 
 # ======================================
 # Sistema / IDEs / SO

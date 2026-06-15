@@ -12,7 +12,7 @@ variable "lambda_package_path" {
 variable "runtime" {
   description = "Runtime da Lambda"
   type        = string
-  default     = "python3.12"
+  default     = "python3.10"
 }
 
 variable "handler" {

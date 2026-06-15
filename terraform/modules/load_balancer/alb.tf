@@ -13,15 +13,15 @@ resource "aws_lb" "alb_triaige" {
   }
 }
 
-resource "aws_lb_target_group" "tg_triaige_80" {
-  name        = "tg-triaige-80"
-  port        = 80
+resource "aws_lb_target_group" "tg_triaige_8080" {
+  name        = "tg-triaige-8080"
+  port        = 8080
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "instance"
 
   health_check {
-    path                = "/"
+    path                = "/actuator/health"
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
@@ -31,16 +31,16 @@ resource "aws_lb_target_group" "tg_triaige_80" {
   }
 
   tags = {
-    Name = "tg-triaige-80"
+    Name = "tg-triaige-8080"
   }
 }
 
 resource "aws_lb_target_group_attachment" "tg_attach_triaige" {
   count = length(var.ec2_ids_triaige)
 
-  target_group_arn = aws_lb_target_group.tg_triaige_80.arn
+  target_group_arn = aws_lb_target_group.tg_triaige_8080.arn
   target_id        = var.ec2_ids_triaige[count.index]
-  port             = 80
+  port             = 8080
 }
 
 resource "aws_lb_listener" "listener_80" {
@@ -50,6 +50,6 @@ resource "aws_lb_listener" "listener_80" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.tg_triaige_80.arn
+    target_group_arn = aws_lb_target_group.tg_triaige_8080.arn
   }
 }

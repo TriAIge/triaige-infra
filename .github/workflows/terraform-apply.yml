@@ -186,9 +186,6 @@ jobs:
       - name: Verificar se terraform.tfstate existe
         id: tfstate-check
         if: always()
-<<<<<<< HEAD
-        uses: actions/cache/save@v5
-=======
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           if [ -f terraform.tfstate ]; then
@@ -200,8 +197,7 @@ jobs:
 
       - name: Salvar state remoto (cache)
         if: always() && steps.tfstate-check.outputs.exists == 'true'
-        uses: actions/cache/save@v4
->>>>>>> d1159ef2bf2b22b068db95e209a5043a5c3bc971
+        uses: actions/cache/save@v5
         with:
           path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
           key: tfstate-cache

@@ -95,7 +95,7 @@
         src: "{{ apps_dir }}/triaige-srv-ai-config/application-prod.yml.example"
         dest: "{{ config_dir }}/triaige-srv-ai-config/application-prod.yml"
         remote_src: true
-        mode: "0640"
+        mode: "0644"
 
     - name: Preencher GEMINI_API_KEY em application-prod.yml (srv-ai)
       ansible.builtin.replace:
@@ -146,7 +146,7 @@
         src: "{{ apps_dir }}/triaige-srv-orchestrator-config/application-prod.yml.example"
         dest: "{{ config_dir }}/triaige-srv-orchestrator-config/application-prod.yml"
         remote_src: true
-        mode: "0640"
+        mode: "0644"
 
     - name: Substituir placeholders em application-prod.yml (srv-orchestrator)
       ansible.builtin.replace:

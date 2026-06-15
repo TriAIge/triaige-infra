@@ -268,18 +268,35 @@ jobs:
           name: tfout
           path: ${{ env.TF_WORKING_DIR }}
 
-      - name: Gerar inventario do Ansible (EC2 privada, via proxy)
+      - name: Gerar inventario e ssh_config do Ansible (EC2 privada, via proxy)
         run: |
           set -euo pipefail
           TFOUT="${{ env.TF_WORKING_DIR }}/tfout.json"
 
           public_ip_a="$(jq -r '.ec2_public_ips.value[0]' "$TFOUT")"
           private_ip="$(jq -r '.ec2_private_ip.value' "$TFOUT")"
-          proxy_args="-o ProxyCommand=\"ssh -i id_ec2_public.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -W %h:%p ubuntu@${public_ip_a}\""
+
+          cat > ansible/ssh_config_private <<EOF
+          Host jump-host
+              HostName ${public_ip_a}
+              User ubuntu
+              IdentityFile id_ec2_public.pem
+              IdentitiesOnly yes
+              StrictHostKeyChecking no
+              UserKnownHostsFile /dev/null
+
+          Host ${private_ip}
+              User ubuntu
+              IdentityFile id_ec2_private.pem
+              IdentitiesOnly yes
+              ProxyJump jump-host
+              StrictHostKeyChecking no
+              UserKnownHostsFile /dev/null
+          EOF
 
           {
             echo "[triaige_private]"
-            echo "${private_ip} ansible_user=ubuntu ansible_ssh_private_key_file=id_ec2_private.pem ansible_ssh_common_args='${proxy_args}'"
+            echo "${private_ip} ansible_ssh_common_args='-F ssh_config_private'"
           } > ansible/inventory.ini
 
       - name: Configurar chaves SSH para o Ansible (host privado + proxy)
@@ -300,4 +317,4 @@ jobs:
       - name: Limpar credenciais temporarias do Ansible
         if: always()
         working-directory: ansible
-        run: rm -f id_ec2_public.pem id_ec2_private.pem inventory.ini
+        run: rm -f id_ec2_public.pem id_ec2_private.pem inventory.ini ssh_config_private

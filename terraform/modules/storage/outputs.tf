@@ -15,3 +15,8 @@ output "s3_trusted" {
 output "s3_trusted_arn" {
   value = aws_s3_bucket.bucket-triaige-trusted-certificacoes.arn
 }
+
+output "s3_curated" {
+  description = "Nome do bucket S3 curated"
+  value       = aws_s3_bucket.bucket-triaige-curated.bucket
+}

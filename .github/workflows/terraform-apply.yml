@@ -72,17 +72,33 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.10"
 
       - name: Empacotar Lambda triaige-fn-ocr-normalizer
         working-directory: ocr-normalizer
         run: |
           set -euo pipefail
+          rm -rf build triaige-fn-ocr-normalizer.zip
           mkdir -p build
-          pip install -r requirements.txt -t build/ --platform manylinux2014_x86_64 --only-binary=:all:
+          pip install \
+            "pymupdf>=1.23" \
+            "pytesseract>=0.3.10" \
+            "pillow>=10.0" \
+            "python-docx>=1.1" \
+            -t build/ \
+            --platform manylinux2014_x86_64 \
+            --only-binary=:all:
           cp lambda_function.py extrator_juridico.py anonimizador.py build/
-          (cd build && zip -r ../triaige-fn-ocr-normalizer.zip .)
+          find build -type d \( -name "__pycache__" -o -name "tests" -o -name "test" -o -name "*.dist-info" -o -name "*.egg-info" \) -prune -exec rm -rf {} +
+          find build -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete
+          (cd build && zip -rq ../triaige-fn-ocr-normalizer.zip .)
           mv triaige-fn-ocr-normalizer.zip build/
+          zip_size="$(stat -c%s build/triaige-fn-ocr-normalizer.zip)"
+          ls -lh build/triaige-fn-ocr-normalizer.zip
+          if [ "$zip_size" -ge 50000000 ]; then
+            echo "::error::Pacote Lambda com ${zip_size} bytes. O upload direto da Lambda deve ficar abaixo de 50 MB; remova dependencias ou use S3/container image."
+            exit 1
+          fi
 
       - name: Configurar credenciais AWS (Academy/Learner Lab)
         uses: aws-actions/configure-aws-credentials@v6

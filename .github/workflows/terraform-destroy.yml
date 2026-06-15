@@ -1,0 +1,133 @@
+# Terraform Destroy (TriAIge)
+#
+# Disparo manual (workflow_dispatch) que destrói toda a infra do Terraform
+# em terraform/ deste repositório. Exige digitar "destroy" no input de
+# confirmação para evitar disparo acidental.
+#
+# Pré-requisitos (Secrets do repositório, em Settings > Secrets and
+# variables > Actions):
+#   - AWS_ACCESS_KEY_ID
+#   - AWS_SECRET_ACCESS_KEY
+#   - AWS_SESSION_TOKEN
+#
+# Esses três valores vêm da aba "AWS Details" > "AWS CLI" do AWS Academy
+# Learner Lab e MUDAM a cada vez que o laboratório é (re)iniciado. Antes de
+# disparar este workflow, copie os três valores atuais do laboratório para
+# os Secrets acima (sobrescrevendo os anteriores).
+#
+# State remoto: o state é restaurado do cache do GitHub Actions (chave fixa
+# "tfstate-cache"), a mesma usada pelo workflow de apply. ATENÇÃO: caches do
+# Actions expiram após ~7 dias sem uso. Se isso acontecer, este workflow não
+# terá conhecimento dos recursos criados em um apply anterior e o destroy
+# pode não conseguir removê-los automaticamente (ficando recursos órfãos na
+# conta AWS). O step "Verificar state restaurado" abaixo emite um aviso
+# quando isso é detectado.
+#
+# Lambda triaige-fn-ocr-normalizer: o módulo terraform/modules/compute/lambda
+# referencia um pacote .zip (filebase64sha256), então este workflow também
+# precisa gerá-lo para que o terraform consiga avaliar a configuração antes
+# de destruir.
+
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: 'Digite "destroy" para confirmar a destruicao de TODA a infraestrutura TriAIge'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: terraform
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar confirmacao
+        run: |
+          if [ "${{ inputs.confirmacao }}" != "destroy" ]; then
+            echo "Confirmacao invalida. Digite exatamente 'destroy' para continuar."
+            exit 1
+          fi
+
+      - name: Checkout triaige-infra
+        uses: actions/checkout@v4
+
+      - name: Checkout triaige-fn-ocr-normalizer
+        uses: actions/checkout@v4
+        with:
+          repository: TriAIge/triaige-fn-ocr-normalizer
+          path: ocr-normalizer
+          token: ${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Empacotar Lambda triaige-fn-ocr-normalizer
+        working-directory: ocr-normalizer
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          pip install -r requirements.txt -t build/ --platform manylinux2014_x86_64 --only-binary=:all:
+          cp lambda_function.py extrator_juridico.py anonimizador.py build/
+          (cd build && zip -r ../triaige-fn-ocr-normalizer.zip .)
+          mv triaige-fn-ocr-normalizer.zip build/
+
+      - name: Configurar credenciais AWS (Academy/Learner Lab)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Restaurar state remoto (cache)
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
+          key: tfstate-cache
+
+      - name: Verificar state restaurado
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          if [ ! -s terraform.tfstate ]; then
+            echo "::warning::Nenhum terraform.tfstate restaurado do cache (cache ausente, expirado ou vazio)."
+            echo "::warning::Se a infra foi criada por um apply anterior, este destroy pode nao localizar os recursos automaticamente."
+          fi
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      - name: Terraform Destroy
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform destroy -auto-approve \
+            -var="lambda_ocr_normalizer_package_path=../ocr-normalizer/build/triaige-fn-ocr-normalizer.zip"
+
+      - name: Remover cache antigo do state
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh cache delete tfstate-cache --repo ${{ github.repository }} || true
+
+      - name: Salvar state remoto (cache)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
+          key: tfstate-cache

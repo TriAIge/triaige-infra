@@ -14,6 +14,18 @@
 # disparar este workflow, copie os três valores atuais do laboratório para
 # os Secrets acima (sobrescrevendo os anteriores).
 #
+# Deploy dos serviços (Ansible) após o apply: além dos secrets acima, são
+# necessários para o step "Deploy triaige-srv-ai e triaige-srv-orchestrator":
+#   - EC2_SSH_PRIVATE_KEY: conteúdo do arquivo
+#     terraform/keys/key-ec2-public-triaige.pem (chave SSH das EC2 públicas,
+#     usuário "ubuntu"). Esse arquivo é gitignored, copie o conteúdo local.
+#   - PROD_DB_USERNAME / PROD_DB_PASSWORD: credenciais do MySQL usadas pelo
+#     triaige-srv-orchestrator (perfil prod), na ec2-private-banco-dados.
+#   - GEMINI_API_KEY_PROD: chave Gemini de produção, usada pelo triaige-srv-ai.
+#   - CROSS_REPO_TOKEN: também é reaproveitado aqui para clonar nas EC2
+#     públicas os repositórios privados triaige-srv-ai-config e
+#     triaige-srv-orchestrator-config.
+#
 # State remoto: como o backend continua local (terraform.tfstate não está
 # versionado), o state é guardado entre execuções usando o cache do GitHub
 # Actions (chave fixa "tfstate-cache"). Caches do Actions expiram após ~7
@@ -101,14 +113,90 @@ jobs:
           terraform apply -auto-approve \
             -var="lambda_ocr_normalizer_package_path=../ocr-normalizer/build/triaige-fn-ocr-normalizer.zip"
 
+      - name: Gerar inventario e variaveis do Ansible a partir dos outputs do Terraform
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          terraform output -json > tfout.json
+
+          {
+            echo "[triaige_public]"
+            jq -r '.ec2_public_ips.value[]' tfout.json | while read -r ip; do
+              echo "$ip ansible_user=ubuntu"
+            done
+          } > ../ansible/inventory.ini
+
+          jq -n \
+            --arg db_host "$(jq -r '.ec2_private_ip.value' tfout.json)" \
+            --arg aws_region "${{ env.AWS_REGION }}" \
+            --arg docs_received "$(jq -r '.queue_urls.value["triaige-docs-received"]' tfout.json)" \
+            --arg docs_preprocessing "$(jq -r '.queue_urls.value["triaige-docs-preprocessing"]' tfout.json)" \
+            --arg results_ready "$(jq -r '.queue_urls.value["triaige-results-ready"]' tfout.json)" \
+            --arg raw_bucket "$(jq -r '.s3_raw.value' tfout.json)" \
+            --arg curated_bucket "$(jq -r '.s3_curated.value' tfout.json)" \
+            --arg db_username "${{ secrets.PROD_DB_USERNAME }}" \
+            --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \
+            --arg gemini_api_key "${{ secrets.GEMINI_API_KEY_PROD }}" \
+            --arg github_token "${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}" \
+            '{
+              db_host: $db_host,
+              db_username: $db_username,
+              db_password: $db_password,
+              aws_region: $aws_region,
+              docs_received_queue_url: $docs_received,
+              docs_preprocessing_queue_url: $docs_preprocessing,
+              results_ready_queue_url: $results_ready,
+              raw_documents_bucket: $raw_bucket,
+              curated_results_bucket: $curated_bucket,
+              ai_service_base_url: "http://localhost:8082",
+              gemini_api_key: $gemini_api_key,
+              github_token: $github_token
+            }' > ../ansible/vars.json
+
+          rm -f tfout.json
+
+      - name: Configurar chave SSH para o Ansible
+        working-directory: ansible
+        run: |
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > id_ec2_public.pem
+          chmod 600 id_ec2_public.pem
+
+      - name: Instalar Ansible
+        run: pip install --user ansible
+
+      - name: Deploy triaige-srv-ai e triaige-srv-orchestrator (Ansible)
+        working-directory: ansible
+        run: |
+          ansible-playbook -i inventory.ini \
+            --private-key id_ec2_public.pem \
+            --extra-vars "@vars.json" \
+            playbook-deploy-services.yml
+
+      - name: Limpar credenciais temporarias do Ansible
+        if: always()
+        working-directory: ansible
+        run: rm -f id_ec2_public.pem vars.json inventory.ini
+
       - name: Remover cache antigo do state
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh cache delete tfstate-cache --repo ${{ github.repository }} || true
 
-      - name: Salvar state remoto (cache)
+      - name: Verificar se terraform.tfstate existe
+        id: tfstate-check
         if: always()
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          if [ -f terraform.tfstate ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::terraform.tfstate nao foi gerado (apply falhou antes de criar o state). Cache nao sera salvo."
+          fi
+
+      - name: Salvar state remoto (cache)
+        if: always() && steps.tfstate-check.outputs.exists == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate

@@ -41,3 +41,15 @@ module "load_balancer" {
   security_groups_id_alb = module.network.security_groups_id_alb
   ec2_ids_triaige        = module.ec2.ec2_ids_triaige
 }
+
+# Lambda de pré-processamento (OCR/normalização/anonimização) - recurso novo,
+# código-fonte em ../triaige-fn-ocr-normalizer.
+module "lambda_ocr_normalizer" {
+  depends_on = [module.sqs, module.storage, module.load_balancer]
+  source     = "./modules/compute/lambda"
+
+  lambda_package_path          = var.lambda_ocr_normalizer_package_path
+  docs_preprocessing_queue_arn = module.sqs.queue_arns["triaige-docs-preprocessing"]
+  trusted_bucket_name          = module.storage.s3_trusted
+  orchestrator_base_url        = "http://${module.load_balancer.alb_dns_name}"
+}

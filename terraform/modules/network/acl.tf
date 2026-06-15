@@ -30,6 +30,15 @@ resource "aws_network_acl" "acl-public-triaige" {
 
   ingress {
     protocol   = "tcp"
+    rule_no    = 350
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 8080
+    to_port    = 8080
+  }
+
+  ingress {
+    protocol   = "tcp"
     rule_no    = 400
     action     = "allow"
     cidr_block = "0.0.0.0/0"

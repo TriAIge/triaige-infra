@@ -125,8 +125,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh cache delete tfstate-cache --repo ${{ github.repository }} || true
 
-      - name: Salvar state remoto (cache)
+      - name: Verificar se terraform.tfstate existe
+        id: tfstate-check
         if: always()
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          if [ -f terraform.tfstate ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::terraform.tfstate nao foi gerado (destroy falhou antes de atualizar o state). Cache nao sera salvo."
+          fi
+
+      - name: Salvar state remoto (cache)
+        if: always() && steps.tfstate-check.outputs.exists == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate

@@ -3,3 +3,9 @@ variable "lambda_ocr_normalizer_package_path" {
   type        = string
   default     = "../../triaige-fn-ocr-normalizer/build/triaige-fn-ocr-normalizer.zip"
 }
+
+variable "ses_sender_email" {
+  description = "E-mail verificado no SES, usado como remetente (SES_FROM_EMAIL) pelo triaige-srv-notification"
+  type        = string
+  default     = "miguel.asilva@sptech.school"
+}

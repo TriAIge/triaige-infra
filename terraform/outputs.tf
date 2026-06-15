@@ -30,3 +30,8 @@ output "alb_dns_name" {
   description = "DNS name do alb-triaige"
   value       = module.load_balancer.alb_dns_name
 }
+
+output "ses_sender_email" {
+  description = "E-mail remetente verificado no SES, usado como SES_FROM_EMAIL por triaige-srv-notification (perfil prod)"
+  value       = var.ses_sender_email
+}

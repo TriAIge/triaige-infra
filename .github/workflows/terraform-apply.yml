@@ -48,17 +48,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout triaige-infra
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout triaige-fn-ocr-normalizer
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: TriAIge/triaige-fn-ocr-normalizer
           path: ocr-normalizer
           token: ${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Configurar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -73,7 +73,7 @@ jobs:
           mv triaige-fn-ocr-normalizer.zip build/
 
       - name: Configurar credenciais AWS (Academy/Learner Lab)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -81,12 +81,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configurar Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.5"
 
       - name: Restaurar state remoto (cache)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
           key: tfstate-cache
@@ -109,7 +109,7 @@ jobs:
 
       - name: Salvar state remoto (cache)
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
           key: tfstate-cache

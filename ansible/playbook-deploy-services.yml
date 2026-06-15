@@ -3,6 +3,7 @@
 # Sobe, em cada EC2 publica (ec2-public-triaige-us-east-1a e -1b):
 #   - triaige-srv-ai          (porta 8082)
 #   - triaige-srv-orchestrator (porta 8080)
+#   - triaige-srv-notification (porta 8083)
 #
 # As imagens sao construidas localmente em cada instancia a partir do
 # Dockerfile de cada repositorio (git clone + docker build), sem depender de
@@ -12,7 +13,10 @@
 # outputs do Terraform e de Secrets do GitHub):
 #   github_token                 - token para clonar os repos *-config (privados)
 #   db_host                      - IP privado da ec2-private-banco-dados
-#   db_username / db_password    - credenciais do MySQL (perfil prod)
+#   db_username / db_password    - credenciais do MySQL (perfil prod), usadas
+#                                   tanto por triaige-srv-orchestrator quanto
+#                                   por triaige-srv-notification (databases
+#                                   diferentes, mesmo usuario)
 #   aws_region                   - regiao AWS (us-east-1)
 #   docs_received_queue_url
 #   docs_preprocessing_queue_url
@@ -21,6 +25,8 @@
 #   curated_results_bucket
 #   ai_service_base_url          - URL do srv-ai a partir do srv-orchestrator
 #   gemini_api_key                - chave Gemini de producao
+#   ses_sender_email              - e-mail verificado no SES (output do Terraform),
+#                                   usado como SES_FROM_EMAIL por triaige-srv-notification
 
 - name: Aguardar SSH disponivel nas EC2 publicas
   hosts: triaige_public
@@ -73,6 +79,7 @@
         - "{{ apps_dir }}"
         - "{{ config_dir }}/triaige-srv-ai-config"
         - "{{ config_dir }}/triaige-srv-orchestrator-config"
+        - "{{ config_dir }}/triaige-srv-notification-config"
 
     # ── triaige-srv-ai ──────────────────────────────────────────────────────
     - name: Clonar/atualizar triaige-srv-ai
@@ -186,3 +193,61 @@
         -e CONFIG_REPO_PATH=/config/
         -v {{ config_dir }}/triaige-srv-orchestrator-config:/config:ro
         triaige-srv-orchestrator:latest
+
+    # ── triaige-srv-notification ────────────────────────────────────────────
+    - name: Clonar/atualizar triaige-srv-notification
+      ansible.builtin.git:
+        repo: "https://github.com/{{ github_org }}/triaige-srv-notification.git"
+        dest: "{{ apps_dir }}/triaige-srv-notification"
+        version: main
+        force: true
+
+    - name: Clonar/atualizar triaige-srv-notification-config
+      ansible.builtin.git:
+        repo: "https://x-access-token:{{ github_token }}@github.com/{{ github_org }}/triaige-srv-notification-config.git"
+        dest: "{{ apps_dir }}/triaige-srv-notification-config"
+        version: main
+        force: true
+      no_log: true
+
+    - name: Renderizar application-prod.yml (srv-notification) a partir do .example
+      ansible.builtin.copy:
+        src: "{{ apps_dir }}/triaige-srv-notification-config/application-prod.yml.example"
+        dest: "{{ config_dir }}/triaige-srv-notification-config/application-prod.yml"
+        remote_src: true
+        mode: "0644"
+
+    - name: Substituir placeholders em application-prod.yml (srv-notification)
+      ansible.builtin.replace:
+        path: "{{ config_dir }}/triaige-srv-notification-config/application-prod.yml"
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      loop:
+        - { regexp: "__DB_HOST__", replace: "{{ db_host }}" }
+        - { regexp: "__DB_USERNAME__", replace: "{{ db_username }}" }
+        - { regexp: "__DB_PASSWORD__", replace: "{{ db_password }}" }
+        - { regexp: "__AWS_REGION__", replace: "{{ aws_region }}" }
+        - { regexp: "__RESULTS_READY_QUEUE_URL__", replace: "{{ results_ready_queue_url }}" }
+        - { regexp: "__SES_FROM_EMAIL__", replace: "{{ ses_sender_email }}" }
+      no_log: true
+
+    - name: Build da imagem triaige-srv-notification
+      ansible.builtin.command: docker build -t triaige-srv-notification:latest .
+      args:
+        chdir: "{{ apps_dir }}/triaige-srv-notification"
+
+    - name: Remover container anterior triaige-srv-notification
+      ansible.builtin.command: docker rm -f triaige-srv-notification
+      register: rm_srv_notification
+      failed_when: false
+      changed_when: rm_srv_notification.rc == 0
+
+    - name: Subir container triaige-srv-notification
+      ansible.builtin.command: >
+        docker run -d --name triaige-srv-notification
+        --restart unless-stopped
+        --network host
+        -e SPRING_PROFILES_ACTIVE=prod
+        -e CONFIG_REPO_PATH=/config/
+        -v {{ config_dir }}/triaige-srv-notification-config:/config:ro
+        triaige-srv-notification:latest

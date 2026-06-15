@@ -17,11 +17,14 @@
 # Estrutura de jobs:
 #   1. apply               - terraform apply e publica os outputs (tfout.json)
 #                             como artifact para os jobs seguintes.
-#   2. deploy-app-services  - (Ansible) sobe triaige-srv-ai e
-#                             triaige-srv-orchestrator nas EC2 públicas.
+#   2. deploy-app-services  - (Ansible) sobe triaige-srv-ai,
+#                             triaige-srv-orchestrator e
+#                             triaige-srv-notification nas EC2 públicas.
 #   3. configure-mysql      - (Ansible) instala/configura o MySQL na
-#                             ec2-private-banco-dados, via ProxyJump por uma
-#                             das EC2 públicas.
+#                             ec2-private-banco-dados (databases
+#                             triaige_srv_orchestrator e
+#                             triaige_srv_notification), via ProxyJump por
+#                             uma das EC2 públicas.
 # Os jobs 2 e 3 dependem apenas do job 1 e rodam em paralelo.
 #
 # Secrets adicionais usados pelos jobs de Ansible:
@@ -34,11 +37,17 @@
 #     terraform/keys/key-ec2-private-triaige.pem (chave SSH da
 #     ec2-private-banco-dados, usuário "ubuntu"). Também gitignored.
 #   - PROD_DB_USERNAME / PROD_DB_PASSWORD: credenciais do MySQL usadas pelo
-#     triaige-srv-orchestrator (perfil prod), na ec2-private-banco-dados.
+#     triaige-srv-orchestrator e pelo triaige-srv-notification (perfil prod),
+#     na ec2-private-banco-dados (databases diferentes, mesmo usuário).
 #   - GEMINI_API_KEY_PROD: chave Gemini de produção, usada pelo triaige-srv-ai.
 #   - CROSS_REPO_TOKEN: também é reaproveitado aqui para clonar nas EC2
-#     públicas os repositórios privados triaige-srv-ai-config e
-#     triaige-srv-orchestrator-config.
+#     públicas os repositórios privados triaige-srv-ai-config,
+#     triaige-srv-orchestrator-config e triaige-srv-notification-config.
+#
+# Nenhum secret novo é necessário para o triaige-srv-notification: o e-mail
+# remetente do SES vem do output `ses_sender_email` do Terraform (variável
+# ses_sender_email em terraform/variables.tf), e as credenciais AWS do
+# processo em si vêm do LabInstanceProfile da EC2 (DefaultCredentialsProvider).
 #
 # State remoto: como o backend continua local (terraform.tfstate não está
 # versionado), o state é guardado entre execuções usando o cache do GitHub
@@ -213,6 +222,7 @@ jobs:
             --arg results_ready "$(jq -r '.queue_urls.value["triaige-results-ready"]' "$TFOUT")" \
             --arg raw_bucket "$(jq -r '.s3_raw.value' "$TFOUT")" \
             --arg curated_bucket "$(jq -r '.s3_curated.value' "$TFOUT")" \
+            --arg ses_sender_email "$(jq -r '.ses_sender_email.value' "$TFOUT")" \
             --arg db_username "${{ secrets.PROD_DB_USERNAME }}" \
             --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \
             --arg gemini_api_key "${{ secrets.GEMINI_API_KEY_PROD }}" \
@@ -229,6 +239,7 @@ jobs:
               curated_results_bucket: $curated_bucket,
               ai_service_base_url: "http://localhost:8082",
               gemini_api_key: $gemini_api_key,
+              ses_sender_email: $ses_sender_email,
               github_token: $github_token
             }' > ansible/vars.json
 

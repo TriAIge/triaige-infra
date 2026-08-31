@@ -17,3 +17,9 @@ variable "security_groups_id_alb" {
   description = "Security Groups do Load Balancer"
   type        = list(string)
 }
+
+variable "acm_certificate_arn" {
+  description = "ARN de um certificado ACM existente para HTTPS"
+  type        = string
+  default     = ""
+}

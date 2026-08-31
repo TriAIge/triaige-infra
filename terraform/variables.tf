@@ -1,11 +1,29 @@
-variable "lambda_ocr_normalizer_package_path" {
-  description = "Caminho do pacote .zip da Lambda triaige-fn-ocr-normalizer (gerado conforme readMe.md desse repositório). Assume checkout do repositório triaige-fn-ocr-normalizer como diretório irmão de triaige-infra."
+variable "aws_region" {
+  description = "Região AWS para os recursos do ambiente Triaige"
   type        = string
-  default     = "../../triaige-fn-ocr-normalizer/build/triaige-fn-ocr-normalizer.zip"
+  default     = "us-east-1"
 }
 
-variable "ses_sender_email" {
-  description = "E-mail verificado no SES, usado como remetente (SES_FROM_EMAIL) pelo triaige-srv-notification"
+variable "environment" {
+  description = "Ambiente de deploy (dev, staging ou prod)"
   type        = string
-  default     = "miguel.asilva@sptech.school"
+  default     = "dev"
+}
+
+variable "alert_email" {
+  description = "E-mail para receber notificações do SNS sobre alarmes do CloudWatch"
+  type        = string
+  default     = "ops@triaige.local"
+}
+
+variable "iam_instance_profile" {
+  description = "Instance profile IAM existente usado pelas EC2"
+  type        = string
+  default     = "LabInstanceProfile"
+}
+
+variable "acm_certificate_arn" {
+  description = "ARN de um certificado ACM existente para o listener HTTPS do ALB"
+  type        = string
+  default     = ""
 }

@@ -1,7 +1,7 @@
 # Playbook de deploy dos servicos TriAIge (perfil prod) nas EC2 publicas.
 #
 # Sobe, em cada EC2 publica (ec2-public-triaige-us-east-1a e -1b):
-#   - triaige-srv-ai          (porta 8082)
+#   - triaige-srv-mcp-ai          (porta 8082)
 #   - triaige-srv-orchestrator (porta 8080)
 #   - triaige-srv-notification (porta 8083)
 #
@@ -37,7 +37,7 @@
         timeout: 300
         delay: 5
 
-- name: Subir triaige-srv-ai e triaige-srv-orchestrator
+- name: Subir triaige-srv-mcp-ai e triaige-srv-orchestrator
   hosts: triaige_public
   become: true
   vars:
@@ -77,60 +77,60 @@
         mode: "0755"
       loop:
         - "{{ apps_dir }}"
-        - "{{ config_dir }}/triaige-srv-ai-config"
+        - "{{ config_dir }}/triaige-srv-mcp-ai-config"
         - "{{ config_dir }}/triaige-srv-orchestrator-config"
         - "{{ config_dir }}/triaige-srv-notification-config"
 
-    # ── triaige-srv-ai ──────────────────────────────────────────────────────
-    - name: Clonar/atualizar triaige-srv-ai
+    # ── triaige-srv-mcp-ai ──────────────────────────────────────────────────────
+    - name: Clonar/atualizar triaige-srv-mcp-ai
       ansible.builtin.git:
-        repo: "https://github.com/{{ github_org }}/triaige-srv-ai.git"
-        dest: "{{ apps_dir }}/triaige-srv-ai"
+        repo: "https://github.com/{{ github_org }}/triaige-srv-mcp-ai.git"
+        dest: "{{ apps_dir }}/triaige-srv-mcp-ai"
         version: main
         force: true
 
-    - name: Clonar/atualizar triaige-srv-ai-config
+    - name: Clonar/atualizar triaige-srv-mcp-ai-config
       ansible.builtin.git:
-        repo: "https://x-access-token:{{ github_token }}@github.com/{{ github_org }}/triaige-srv-ai-config.git"
-        dest: "{{ apps_dir }}/triaige-srv-ai-config"
+        repo: "https://x-access-token:{{ github_token }}@github.com/{{ github_org }}/triaige-srv-mcp-ai-config.git"
+        dest: "{{ apps_dir }}/triaige-srv-mcp-ai-config"
         version: main
         force: true
       no_log: true
 
     - name: Renderizar application-prod.yml (srv-ai) a partir do .example
       ansible.builtin.copy:
-        src: "{{ apps_dir }}/triaige-srv-ai-config/application-prod.yml.example"
-        dest: "{{ config_dir }}/triaige-srv-ai-config/application-prod.yml"
+        src: "{{ apps_dir }}/triaige-srv-mcp-ai-config/application-prod.yml.example"
+        dest: "{{ config_dir }}/triaige-srv-mcp-ai-config/application-prod.yml"
         remote_src: true
         mode: "0644"
 
     - name: Preencher GEMINI_API_KEY em application-prod.yml (srv-ai)
       ansible.builtin.replace:
-        path: "{{ config_dir }}/triaige-srv-ai-config/application-prod.yml"
+        path: "{{ config_dir }}/triaige-srv-mcp-ai-config/application-prod.yml"
         regexp: 'SUBSTITUA_PELA_CHAVE_GEMINI_DE_PRODUCAO'
         replace: "{{ gemini_api_key }}"
       no_log: true
 
-    - name: Build da imagem triaige-srv-ai
-      ansible.builtin.command: docker build -t triaige-srv-ai:latest .
+    - name: Build da imagem triaige-srv-mcp-ai
+      ansible.builtin.command: docker build -t triaige-srv-mcp-ai:latest .
       args:
-        chdir: "{{ apps_dir }}/triaige-srv-ai"
+        chdir: "{{ apps_dir }}/triaige-srv-mcp-ai"
 
-    - name: Remover container anterior triaige-srv-ai
-      ansible.builtin.command: docker rm -f triaige-srv-ai
+    - name: Remover container anterior triaige-srv-mcp-ai
+      ansible.builtin.command: docker rm -f triaige-srv-mcp-ai
       register: rm_srv_ai
       failed_when: false
       changed_when: rm_srv_ai.rc == 0
 
-    - name: Subir container triaige-srv-ai
+    - name: Subir container triaige-srv-mcp-ai
       ansible.builtin.command: >
-        docker run -d --name triaige-srv-ai
+        docker run -d --name triaige-srv-mcp-ai
         --restart unless-stopped
         --network host
         -e SPRING_PROFILES_ACTIVE=prod
         -e CONFIG_REPO_PATH=/config/
-        -v {{ config_dir }}/triaige-srv-ai-config:/config:ro
-        triaige-srv-ai:latest
+        -v {{ config_dir }}/triaige-srv-mcp-ai-config:/config:ro
+        triaige-srv-mcp-ai:latest
 
     # ── triaige-srv-orchestrator ────────────────────────────────────────────
     - name: Clonar/atualizar triaige-srv-orchestrator

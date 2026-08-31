@@ -1,0 +1,1 @@
+# Módulo de rede para a VPC Triaige conforme especificação

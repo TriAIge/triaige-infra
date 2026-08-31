@@ -1,37 +1,44 @@
-# Outputs usados pelo workflow de deploy (Ansible) para subir os servicos
-# triaige-srv-ai e triaige-srv-orchestrator nas EC2 publicas apos o apply.
+output "vpc_id" {
+  description = "ID da VPC Triaige"
+  value       = module.network.vpc_id
+}
+
+output "public_subnet_ids" {
+  description = "Subnets públicas da VPC"
+  value       = module.network.public_subnet_ids
+}
+
+output "private_subnet_id" {
+  description = "Subnet privada do banco de dados"
+  value       = module.network.private_subnet_id
+}
 
 output "ec2_public_ips" {
-  description = "IPs publicos das EC2 publicas TriAige (us-east-1a, us-east-1b), usados pelo inventario do Ansible"
+  description = "IPs públicos das EC2 de aplicação"
   value       = module.ec2.ec2_public_ips
 }
 
 output "ec2_private_ip" {
-  description = "IP privado da EC2 ec2-private-banco-dados, usado como host MySQL por triaige-srv-orchestrator (perfil prod)"
+  description = "IP privado da EC2 de banco de dados"
   value       = module.ec2.ec2_private_ip
 }
 
-output "s3_raw" {
-  description = "Nome do bucket S3 raw, usado como RAW_DOCUMENTS_BUCKET por triaige-srv-orchestrator (perfil prod)"
-  value       = module.storage.s3_raw
-}
-
-output "s3_curated" {
-  description = "Nome do bucket S3 curated, usado como CURATED_RESULTS_BUCKET por triaige-srv-orchestrator (perfil prod)"
-  value       = module.storage.s3_curated
-}
-
-output "queue_urls" {
-  description = "URLs das filas SQS principais, usadas por triaige-srv-orchestrator (perfil prod)"
-  value       = module.sqs.queue_urls
-}
-
 output "alb_dns_name" {
-  description = "DNS name do alb-triaige"
+  description = "DNS do Application Load Balancer"
   value       = module.load_balancer.alb_dns_name
 }
 
-output "ses_sender_email" {
-  description = "E-mail remetente verificado no SES, usado como SES_FROM_EMAIL por triaige-srv-notification (perfil prod)"
-  value       = var.ses_sender_email
+output "s3_buckets" {
+  description = "Buckets S3 criados pelo ambiente"
+  value = {
+    raw     = module.storage.s3_raw
+    trusted = module.storage.s3_trusted
+    curated = module.storage.s3_curated
+  }
 }
+
+output "sqs_queues" {
+  description = "URLs das filas SQS principais"
+  value       = module.sqs.queue_urls
+}
+

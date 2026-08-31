@@ -1,134 +1,126 @@
-resource "aws_network_acl" "acl-public-triaige" {
-  vpc_id = aws_vpc.vpc-triaige.id
+resource "aws_network_acl" "public" {
+  vpc_id = aws_vpc.this.id
+
+  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
 
   ingress {
-    protocol   = "tcp"
     rule_no    = 100
     action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 22
-    to_port    = 22
-  }
-
-  ingress {
     protocol   = "tcp"
-    rule_no    = 200
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 80
-    to_port    = 80
-  }
-
-  ingress {
-    protocol   = "tcp"
-    rule_no    = 300
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
     from_port  = 443
     to_port    = 443
+    cidr_block = "0.0.0.0/0"
   }
 
   ingress {
-    protocol   = "tcp"
-    rule_no    = 350
+    rule_no    = 110
     action     = "allow"
-    cidr_block = "0.0.0.0/0"
+    protocol   = "tcp"
     from_port  = 8080
     to_port    = 8080
+    cidr_block = "172.16.0.0/16"
   }
 
   ingress {
-    protocol   = "tcp"
-    rule_no    = 400
+    rule_no    = 120
     action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 32000
-    to_port    = 65535
+    protocol   = "tcp"
+    from_port  = 8082
+    to_port    = 8082
+    cidr_block = "172.16.0.0/16"
+  }
+
+  ingress {
+    rule_no    = 130
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 8083
+    to_port    = 8083
+    cidr_block = "172.16.0.0/16"
+  }
+
+  ingress {
+    rule_no    = 140
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 3000
+    to_port    = 3000
+    cidr_block = "172.16.0.0/16"
   }
 
   egress {
-    protocol   = "-1"
     rule_no    = 100
     action     = "allow"
-    cidr_block = "0.0.0.0/0"
+    protocol   = "-1"
     from_port  = 0
     to_port    = 0
+    cidr_block = "0.0.0.0/0"
   }
 
   tags = {
-    Name = "acl-public-triaige"
+    Name        = "nacl-public-triaige"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
+    Environment = var.environment
   }
 }
 
-resource "aws_network_acl" "acl-private-triaige" {
-  vpc_id = aws_vpc.vpc-triaige.id
+resource "aws_network_acl" "private" {
+  vpc_id = aws_vpc.this.id
+
+  subnet_ids = [aws_subnet.private_c.id]
 
   ingress {
-    protocol   = "tcp"
     rule_no    = 100
     action     = "allow"
-    cidr_block = "10.0.0.0/24"
-    from_port  = 22
-    to_port    = 22
-  }
-
-  ingress {
     protocol   = "tcp"
-    rule_no    = 200
-    action     = "allow"
-    cidr_block = "10.0.0.0/24"
-    from_port  = 80
-    to_port    = 80
-  }
-
-  ingress {
-    protocol   = "tcp"
-    rule_no    = 300
-    action     = "allow"
-    cidr_block = "10.0.0.0/24"
-    from_port  = 443
-    to_port    = 443
-  }
-
-  ingress {
-    protocol   = "tcp"
-    rule_no    = 400
-    action     = "allow"
-    cidr_block = "10.0.0.0/24"
     from_port  = 3306
     to_port    = 3306
+    cidr_block = "172.16.0.0/24"
   }
 
   ingress {
-    protocol   = "tcp"
-    rule_no    = 500
+    rule_no    = 110
     action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 32000
-    to_port    = 65535
+    protocol   = "tcp"
+    from_port  = 3306
+    to_port    = 3306
+    cidr_block = "172.16.1.0/24"
   }
 
   egress {
-    protocol   = "-1"
     rule_no    = 100
     action     = "allow"
+    protocol   = "tcp"
+    from_port  = 80
+    to_port    = 80
     cidr_block = "0.0.0.0/0"
-    from_port  = 0
-    to_port    = 0
+  }
+
+  egress {
+    rule_no    = 110
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 443
+    to_port    = 443
+    cidr_block = "0.0.0.0/0"
+  }
+
+  egress {
+    rule_no    = 120
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 3306
+    to_port    = 3306
+    cidr_block = "172.16.0.0/16"
   }
 
   tags = {
-    Name = "acl-private-triaige"
+    Name        = "nacl-private-triaige"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
+    Environment = var.environment
   }
-}
-
-resource "aws_network_acl_association" "acl_association_public" {
-  for_each       = { for idx, subnet_id in local.public_subnets : idx => subnet_id }
-  subnet_id      = each.value
-  network_acl_id = aws_network_acl.acl-public-triaige.id
-}
-
-resource "aws_network_acl_association" "acl_association_private" {
-  subnet_id      = aws_subnet.private_c.id
-  network_acl_id = aws_network_acl.acl-private-triaige.id
 }

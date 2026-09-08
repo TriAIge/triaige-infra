@@ -64,6 +64,14 @@ resource "aws_security_group" "sg_app" {
     security_groups = [aws_security_group.sg_alb.id]
   }
 
+  ingress {
+    description = "ssh (GitHub Actions runner - IP dinamico, sem CIDR fixo)"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -89,6 +97,14 @@ resource "aws_security_group" "sg_mysql" {
     description     = "mysql from application subnets"
     from_port       = 3306
     to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sg_app.id]
+  }
+
+  ingress {
+    description     = "ssh via jump host (EC2 publica, sem IP publico proprio)"
+    from_port       = 22
+    to_port         = 22
     protocol        = "tcp"
     security_groups = [aws_security_group.sg_app.id]
   }

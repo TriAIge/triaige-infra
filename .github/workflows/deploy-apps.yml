@@ -20,7 +20,11 @@
 # variables > Actions) - os mesmos ja usados por "Terraform Apply":
 #   - EC2_SSH_PRIVATE_KEY, PROD_DB_USERNAME, PROD_DB_PASSWORD,
 #     GEMINI_API_KEY_PROD, SES_SENDER_EMAIL, CROSS_REPO_TOKEN (ou o
-#     GITHUB_TOKEN padrao, se os repos *-config nao forem privados).
+#     GITHUB_TOKEN padrao). CROSS_REPO_TOKEN so e necessario hoje pra
+#     triaige-srv-notification-config (unico repo *-config que ainda existe
+#     nesse formato); triaige-srv-mcp-ai-config e triaige-srv-orchestrator-config
+#     foram descontinuados - a config de producao desses dois servicos agora
+#     vem de env var/template local (ver ansible/playbook-deploy-services.yml).
 
 name: Deploy Apps
 

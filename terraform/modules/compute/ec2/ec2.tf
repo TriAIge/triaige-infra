@@ -3,8 +3,12 @@ data "aws_ami" "ubuntu" {
   owners      = ["099720109477"] # Canonical
 
   filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-*-24.04-amd64-server-*"]
+    name = "name"
+    # hvm-ssd* cobre tanto o path antigo (hvm-ssd, gp2) quanto o atual
+    # (hvm-ssd-gp3) - a Canonical passou a publicar as AMIs 24.04 mais
+    # recentes so em hvm-ssd-gp3, entao o filtro fixo em "hvm-ssd/" (sem
+    # wildcard) nao batia com nenhuma imagem.
+    values = ["ubuntu/images/hvm-ssd*/ubuntu-*-24.04-amd64-server-*"]
   }
 
   filter {

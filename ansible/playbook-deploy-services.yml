@@ -12,11 +12,14 @@
 # Variaveis esperadas (via --extra-vars, geradas no workflow a partir dos
 # outputs do Terraform e de Secrets do GitHub):
 #   github_token                 - token para clonar os repos *-config (privados)
+#   app_git_ref                  - branch/tag/commit dos repos de app a
+#                                   deployar (default: main). Nao se aplica
+#                                   aos repos *-config, que ficam sempre em main.
 #   db_host                      - IP privado da ec2-private-banco-dados
 #   db_username / db_password    - credenciais do MySQL (perfil prod), usadas
 #                                   tanto por triaige-srv-orchestrator quanto
-#                                   por triaige-srv-notification (databases
-#                                   diferentes, mesmo usuario)
+#                                   por triaige-srv-notification (banco unico
+#                                   "triaige", mesmo usuario)
 #   aws_region                   - regiao AWS (us-east-1)
 #   docs_received_queue_url
 #   docs_preprocessing_queue_url
@@ -27,6 +30,11 @@
 #   gemini_api_key                - chave Gemini de producao
 #   ses_sender_email              - e-mail verificado no SES (output do Terraform),
 #                                   usado como SES_FROM_EMAIL por triaige-srv-notification
+#
+# Rolling deploy: o play principal roda com serial: 1, ou seja, atualiza uma
+# EC2 publica por vez (aguardando health check antes de seguir pra proxima),
+# ja que o ALB agora roteia cada servico pras duas EC2 (ver triaige-infra
+# terraform/modules/load_balancer/alb.tf).
 
 - name: Aguardar SSH disponivel nas EC2 publicas
   hosts: triaige_public
@@ -40,10 +48,12 @@
 - name: Subir triaige-srv-mcp-ai e triaige-srv-orchestrator
   hosts: triaige_public
   become: true
+  serial: 1
   vars:
     apps_dir: /opt/triaige
     config_dir: /etc/triaige
     github_org: TriAIge
+    app_git_ref: "{{ app_git_ref | default('main') }}"
 
   tasks:
     - name: Atualizar cache apt
@@ -86,7 +96,7 @@
       ansible.builtin.git:
         repo: "https://github.com/{{ github_org }}/triaige-srv-mcp-ai.git"
         dest: "{{ apps_dir }}/triaige-srv-mcp-ai"
-        version: main
+        version: "{{ app_git_ref }}"
         force: true
 
     - name: Clonar/atualizar triaige-srv-mcp-ai-config
@@ -132,12 +142,21 @@
         -v {{ config_dir }}/triaige-srv-mcp-ai-config:/config:ro
         triaige-srv-mcp-ai:latest
 
+    - name: Aguardar triaige-srv-mcp-ai ficar saudavel
+      ansible.builtin.uri:
+        url: http://localhost:8082/actuator/health
+        status_code: 200
+      register: health_srv_ai
+      until: health_srv_ai.status == 200
+      retries: 10
+      delay: 5
+
     # ── triaige-srv-orchestrator ────────────────────────────────────────────
     - name: Clonar/atualizar triaige-srv-orchestrator
       ansible.builtin.git:
         repo: "https://github.com/{{ github_org }}/triaige-srv-orchestrator.git"
         dest: "{{ apps_dir }}/triaige-srv-orchestrator"
-        version: main
+        version: "{{ app_git_ref }}"
         force: true
 
     - name: Clonar/atualizar triaige-srv-orchestrator-config
@@ -194,12 +213,21 @@
         -v {{ config_dir }}/triaige-srv-orchestrator-config:/config:ro
         triaige-srv-orchestrator:latest
 
+    - name: Aguardar triaige-srv-orchestrator ficar saudavel
+      ansible.builtin.uri:
+        url: http://localhost:8080/actuator/health
+        status_code: 200
+      register: health_srv_orchestrator
+      until: health_srv_orchestrator.status == 200
+      retries: 10
+      delay: 5
+
     # ── triaige-srv-notification ────────────────────────────────────────────
     - name: Clonar/atualizar triaige-srv-notification
       ansible.builtin.git:
         repo: "https://github.com/{{ github_org }}/triaige-srv-notification.git"
         dest: "{{ apps_dir }}/triaige-srv-notification"
-        version: main
+        version: "{{ app_git_ref }}"
         force: true
 
     - name: Clonar/atualizar triaige-srv-notification-config
@@ -251,3 +279,12 @@
         -e CONFIG_REPO_PATH=/config/
         -v {{ config_dir }}/triaige-srv-notification-config:/config:ro
         triaige-srv-notification:latest
+
+    - name: Aguardar triaige-srv-notification ficar saudavel
+      ansible.builtin.uri:
+        url: http://localhost:8083/actuator/health
+        status_code: 200
+      register: health_srv_notification
+      until: health_srv_notification.status == 200
+      retries: 10
+      delay: 5

@@ -1,11 +1,10 @@
 # Playbook de configuracao do MySQL na ec2-private-banco-dados.
 #
 # Instala o MySQL Server, libera conexoes externas (bind-address 0.0.0.0,
-# liberado apenas para o sg-public-triaige via security group) e cria os
-# bancos/usuario usados por triaige-srv-orchestrator e
-# triaige-srv-notification, com os mesmos valores dos respectivos perfis
-# "ho" (docker-compose.yml e application-ho.yml de cada servico): databases
-# triaige_srv_orchestrator e triaige_srv_notification, usuario triaige.
+# liberado apenas para o sg-app-triaige via security group), cria o banco
+# unico "triaige" (compartilhado por triaige-srv-orchestrator e
+# triaige-srv-notification) e usuario triaige, e aplica o schema + seed de
+# conveniencia (ansible/files/triaige-schema-seed.sql) uma unica vez.
 #
 # Alcance: a EC2 privada nao tem IP publico, entao o host e acessado via
 # ProxyJump por uma das EC2 publicas (ver inventory.ini gerado pelo
@@ -16,10 +15,10 @@
   become: true
   vars:
     db_names:
-      - triaige_srv_orchestrator
-      - triaige_srv_notification
+      - triaige
     db_user: triaige
     db_password: triaige
+    seed_marker: /etc/triaige/.mysql_seed_applied
 
   tasks:
     - name: Atualizar cache apt
@@ -73,3 +72,25 @@
         mysql -e "GRANT ALL PRIVILEGES ON {{ item }}.* TO '{{ db_user }}'@'%'; FLUSH PRIVILEGES;"
       loop: "{{ db_names }}"
       changed_when: false
+
+    - name: Criar diretorio de config/estado do Triaige
+      ansible.builtin.file:
+        path: /etc/triaige
+        state: directory
+        mode: "0755"
+
+    - name: Copiar schema + seed de conveniencia
+      ansible.builtin.copy:
+        src: triaige-schema-seed.sql
+        dest: /tmp/triaige-schema-seed.sql
+        mode: "0644"
+
+    # Roda uma unica vez: o script tem CREATE TABLE (sem IF NOT EXISTS) e
+    # INSERT com IDs fixos, entao nao e idempotente por si so. O marker em
+    # seed_marker garante que reexecucoes do playbook (ex: outro deploy)
+    # pulem esta task.
+    - name: Aplicar schema + seed (uma unica vez)
+      ansible.builtin.shell: >
+        mysql < /tmp/triaige-schema-seed.sql && touch {{ seed_marker }}
+      args:
+        creates: "{{ seed_marker }}"

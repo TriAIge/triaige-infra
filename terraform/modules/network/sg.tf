@@ -27,9 +27,9 @@ resource "aws_security_group" "sg_alb" {
   }
 }
 
-resource "aws_security_group" "sg_bff_front" {
-  name        = "triaige-bff-front-sg"
-  description = "Security group do EC2 BFF + Frontend"
+resource "aws_security_group" "sg_app" {
+  name        = "triaige-app-sg"
+  description = "Security group das EC2 de aplicacao (orchestrator, mcp-ai, notification, frontend), replicadas nas duas AZs publicas"
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -41,7 +41,7 @@ resource "aws_security_group" "sg_bff_front" {
   }
 
   ingress {
-    description     = "ai"
+    description     = "mcp-ai"
     from_port       = 8082
     to_port         = 8082
     protocol        = "tcp"
@@ -72,38 +72,9 @@ resource "aws_security_group" "sg_bff_front" {
   }
 
   tags = {
-    Name        = "sg-bff-front"
+    Name        = "sg-app"
     Project     = "triaige"
-    Component   = "bff-front"
-    ManagedBy   = "terraform"
-    Environment = var.environment
-  }
-}
-
-resource "aws_security_group" "sg_mcp" {
-  name        = "triaige-mcp-sg"
-  description = "Security group do EC2 MCP"
-  vpc_id      = aws_vpc.this.id
-
-  ingress {
-    description     = "mcp server"
-    from_port       = 8084
-    to_port         = 8084
-    protocol        = "tcp"
-    security_groups = [aws_security_group.sg_bff_front.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "sg-mcp"
-    Project     = "triaige"
-    Component   = "mcp"
+    Component   = "app"
     ManagedBy   = "terraform"
     Environment = var.environment
   }
@@ -119,7 +90,7 @@ resource "aws_security_group" "sg_mysql" {
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
-    security_groups = [aws_security_group.sg_bff_front.id, aws_security_group.sg_mcp.id]
+    security_groups = [aws_security_group.sg_app.id]
   }
 
   egress {

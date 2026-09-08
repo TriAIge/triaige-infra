@@ -1,22 +1,22 @@
 locals {
-  message_retention_seconds  = 604800 # 7 days
-  receive_wait_time_seconds  = 20
+  message_retention_seconds = 604800 # 7 days
+  receive_wait_time_seconds = 20
 
   queues = {
     "triaige-docs-received" = {
-      dlq_name                  = "triaige-docs-received-dlq"
+      dlq_name                   = "triaige-docs-received-dlq"
       visibility_timeout_seconds = 60
-      max_receive_count         = 3
+      max_receive_count          = 3
     }
     "triaige-docs-preprocessing" = {
-      dlq_name                  = "triaige-docs-preprocessing-dlq"
+      dlq_name                   = "triaige-docs-preprocessing-dlq"
       visibility_timeout_seconds = 300
-      max_receive_count         = 3
+      max_receive_count          = 3
     }
     "triaige-results-ready" = {
-      dlq_name                  = "triaige-results-ready-dlq"
+      dlq_name                   = "triaige-results-ready-dlq"
       visibility_timeout_seconds = 120
-      max_receive_count         = 5
+      max_receive_count          = 5
     }
   }
 }

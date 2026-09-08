@@ -31,13 +31,8 @@ variable "private_subnet" {
   type        = string
 }
 
-variable "sg_bff_front_id" {
-  description = "Security group da EC2 BFF/Frontend"
-  type        = string
-}
-
-variable "sg_mcp_id" {
-  description = "Security group da EC2 MCP"
+variable "sg_app_id" {
+  description = "Security group compartilhado pelas EC2 de aplicacao (bff_front e mcp)"
   type        = string
 }
 

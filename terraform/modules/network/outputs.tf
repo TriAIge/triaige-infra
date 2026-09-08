@@ -23,14 +23,9 @@ output "vpc_id" {
   value       = aws_vpc.this.id
 }
 
-output "sg_bff_front_id" {
-  description = "ID do SG do EC2 BFF/Frontend"
-  value       = aws_security_group.sg_bff_front.id
-}
-
-output "sg_mcp_id" {
-  description = "ID do SG do EC2 MCP"
-  value       = aws_security_group.sg_mcp.id
+output "sg_app_id" {
+  description = "ID do SG das EC2 de aplicacao (compartilhado pelas duas EC2 publicas)"
+  value       = aws_security_group.sg_app.id
 }
 
 output "sg_mysql_id" {

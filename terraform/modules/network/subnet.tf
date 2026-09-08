@@ -5,10 +5,10 @@ resource "aws_subnet" "public_a" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name      = "public-subnet-a"
-    Project   = "triaige"
-    Component = "network"
-    ManagedBy = "terraform"
+    Name        = "public-subnet-a"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
     Environment = var.environment
   }
 }
@@ -20,10 +20,10 @@ resource "aws_subnet" "public_b" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name      = "public-subnet-b"
-    Project   = "triaige"
-    Component = "network"
-    ManagedBy = "terraform"
+    Name        = "public-subnet-b"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
     Environment = var.environment
   }
 }
@@ -35,10 +35,10 @@ resource "aws_subnet" "private_c" {
   map_public_ip_on_launch = false
 
   tags = {
-    Name      = "private-subnet-c"
-    Project   = "triaige"
-    Component = "network"
-    ManagedBy = "terraform"
+    Name        = "private-subnet-c"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
     Environment = var.environment
   }
 }

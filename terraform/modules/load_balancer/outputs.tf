@@ -1,5 +1,5 @@
 output "alb_dns_name" {
-  description = "DNS name do alb-triaige, usado por outros serviços (ex.: callback REST da Lambda de pré-processamento) para chamar o orchestrator"
+  description = "DNS name do alb-triaige, usado pelos serviços internos para chamar o orchestrator"
   value       = aws_lb.alb_triaige.dns_name
 }
 

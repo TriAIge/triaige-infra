@@ -1,32 +1,39 @@
 output "public_subnet_ids" {
   description = "IDs das subnets públicas"
-  value       = [for s in local.public_subnets : s]
+  value       = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+}
+
+output "public_subnet_a_id" {
+  description = "ID da subnet pública A"
+  value       = aws_subnet.public_a.id
+}
+
+output "public_subnet_b_id" {
+  description = "ID da subnet pública B"
+  value       = aws_subnet.public_b.id
 }
 
 output "private_subnet_id" {
-  description = "IDs da subnet privada"
+  description = "ID da subnet privada"
   value       = aws_subnet.private_c.id
-}
-
-output "sg_public_triaige_id" {
-  value = aws_security_group.sg-public-triaige.id
-}
-
-output "sg_private_triaige_id" {
-  value = aws_security_group.sg-private-triaige.id
-}
-
-output "public_route_table_association_ids" {
-  description = "IDs das associações route table públicas"
-  value       = { for k, assoc in aws_route_table_association.rt_public_association : k => assoc.id }
 }
 
 output "vpc_id" {
   description = "ID da VPC"
-  value       = aws_vpc.vpc-triaige.id
+  value       = aws_vpc.this.id
 }
 
-output "security_groups_id_alb" {
-  description = "IDs dos security groups do ALB"
-  value       = [aws_security_group.sg_alb.id]
+output "sg_app_id" {
+  description = "ID do SG das EC2 de aplicacao (compartilhado pelas duas EC2 publicas)"
+  value       = aws_security_group.sg_app.id
+}
+
+output "sg_mysql_id" {
+  description = "ID do SG do EC2 MySQL"
+  value       = aws_security_group.sg_mysql.id
+}
+
+output "sg_alb_id" {
+  description = "ID do SG do ALB"
+  value       = aws_security_group.sg_alb.id
 }

@@ -1,42 +1,16 @@
-resource "aws_security_group" "sg-public-triaige" {
-  vpc_id = aws_vpc.vpc-triaige.id
+resource "aws_security_group" "sg_alb" {
+  name        = "triaige-alb-sg"
+  description = "Security group do Application Load Balancer"
+  vpc_id      = aws_vpc.this.id
 
   ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/23"]
-  }
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
+    description = "HTTPS from internet"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    description = "TriAige app porta 8080"
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -45,25 +19,49 @@ resource "aws_security_group" "sg-public-triaige" {
   }
 
   tags = {
-    Name = "sg-public-triaige"
+    Name        = "sg-alb"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
+    Environment = var.environment
   }
 }
 
-resource "aws_security_group" "sg-private-triaige" {
-  vpc_id = aws_vpc.vpc-triaige.id
+resource "aws_security_group" "sg_app" {
+  name        = "triaige-app-sg"
+  description = "Security group das EC2 de aplicacao (orchestrator, mcp-ai, notification, frontend), replicadas nas duas AZs publicas"
+  vpc_id      = aws_vpc.this.id
 
   ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    security_groups = [aws_security_group.sg-public-triaige.id]
+    description     = "orchestrator"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sg_alb.id]
   }
 
   ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    security_groups = [aws_security_group.sg-public-triaige.id]
+    description     = "mcp-ai"
+    from_port       = 8082
+    to_port         = 8082
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sg_alb.id]
+  }
+
+  ingress {
+    description     = "notification"
+    from_port       = 8083
+    to_port         = 8083
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sg_alb.id]
+  }
+
+  ingress {
+    description     = "frontend"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sg_alb.id]
   }
 
   egress {
@@ -74,21 +72,25 @@ resource "aws_security_group" "sg-private-triaige" {
   }
 
   tags = {
-    Name = "sg-private-triaige"
+    Name        = "sg-app"
+    Project     = "triaige"
+    Component   = "app"
+    ManagedBy   = "terraform"
+    Environment = var.environment
   }
 }
 
-resource "aws_security_group" "sg_alb" {
-  name        = "sg_alb_triaige"
-  description = "SG do Load Balancer para redirecionar trafego para EC2s"
-  vpc_id      = aws_vpc.vpc-triaige.id
+resource "aws_security_group" "sg_mysql" {
+  name        = "triaige-mysql-sg"
+  description = "Security group da EC2 MySQL"
+  vpc_id      = aws_vpc.this.id
 
   ingress {
-    description = "HTTP padrao"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description     = "mysql from application subnets"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sg_app.id]
   }
 
   egress {
@@ -99,6 +101,10 @@ resource "aws_security_group" "sg_alb" {
   }
 
   tags = {
-    Name = "sg-alb-triaige"
+    Name        = "sg-mysql"
+    Project     = "triaige"
+    Component   = "database"
+    ManagedBy   = "terraform"
+    Environment = var.environment
   }
 }

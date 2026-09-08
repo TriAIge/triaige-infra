@@ -1,0 +1,39 @@
+# Configuração externa do triaige-srv-orchestrator para o ambiente de
+# PRODUÇÃO, renderizada pelo playbook Ansible de deploy (ver
+# playbook-deploy-services.yml) a partir deste template, com os valores reais
+# de produção (buckets S3, filas SQS, credenciais de banco etc. — vindos do
+# output do Terraform e de Secrets do GitHub Actions). O resultado
+# (application-prod.yml, sem o sufixo .j2) fica só no host de produção,
+# nunca é versionado.
+#
+# Como funciona:
+#   - O serviço carrega este diretório via `spring.config.import` (ver application.yml).
+#   - Por ser um diretório, o Spring Boot procura automaticamente por
+#     application-{profile}.yml de acordo com o profile ativo — este arquivo
+#     só é usado quando SPRING_PROFILES_ACTIVE=prod.
+#   - O caminho é controlado pela env var CONFIG_REPO_PATH (padrão: ../triaige-srv-orchestrator-config/).
+#   - Em produção, o Ansible renderiza este template direto para o caminho
+#     apontado por CONFIG_REPO_PATH no host (/etc/triaige/triaige-srv-orchestrator-config/).
+#   - Em dev/ho, o import é opcional: sem este arquivo, os defaults de
+#     application-dev.yml (H2 + LocalStack) ou application-ho.yml (MySQL local
+#     via docker compose) são usados normalmente.
+
+spring:
+  datasource:
+    url: jdbc:mysql://{{ db_host }}:3306/triaige_srv_orchestrator?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: {{ db_username }}
+    password: {{ db_password }}
+
+aws:
+  region: {{ aws_region }}
+  sqs:
+    docs-received-queue-url: {{ docs_received_queue_url }}
+    docs-preprocessing-queue-url: {{ docs_preprocessing_queue_url }}
+    results-ready-queue-url: {{ results_ready_queue_url }}
+  s3:
+    raw-documents-bucket: {{ raw_documents_bucket }}
+    curated-results-bucket: {{ curated_results_bucket }}
+
+triaige:
+  ai-service:
+    base-url: {{ ai_service_base_url }}

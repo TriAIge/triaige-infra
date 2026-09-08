@@ -1,38 +1,104 @@
-resource "aws_key_pair" "public_key_triaige" {
-  key_name   = var.key_pair_name_public
-  public_key = file("${path.root}/keys/key-ec2-public-triaige.pem.pub")
-}
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
 
-resource "aws_key_pair" "private_key" {
-  key_name   = var.key_pair_name_private
-  public_key = file("${path.root}/keys/key-ec2-private-triaige.pem.pub")
-}
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-*-24.04-amd64-server-*"]
+  }
 
-resource "aws_instance" "ec2_public_triaige" {
-  count                       = length(var.azs)
-  ami                         = "ami-0e86e20dae9224db8"
-  instance_type               = var.instance_type
-  subnet_id                   = var.public_subnets[count.index]
-  associate_public_ip_address = true
-  security_groups             = [var.sg_public_triaige_id]
-  iam_instance_profile        = "LabInstanceProfile"
-  key_name                    = aws_key_pair.public_key_triaige.key_name
-
-  tags = {
-    Name = "ec2-public-triaige-${var.azs[count.index]}"
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
   }
 }
 
-resource "aws_instance" "ec2_private" {
-  ami                         = "ami-0e86e20dae9224db8"
-  instance_type               = var.instance_type
+resource "aws_instance" "bff_front" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.large"
+  subnet_id                   = var.public_subnet_a
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [var.sg_app_id]
+  iam_instance_profile        = var.iam_instance_profile
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 30
+    encrypted   = true
+  }
+
+  tags = {
+    Name        = "triaige-ec2-bff-front"
+    Project     = "triaige"
+    Component   = "bff-front"
+    ManagedBy   = "terraform"
+    Environment = var.environment
+  }
+}
+
+resource "aws_instance" "mcp" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.large"
+  subnet_id                   = var.public_subnet_b
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [var.sg_app_id]
+  iam_instance_profile        = var.iam_instance_profile
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 50
+    encrypted   = true
+  }
+
+  tags = {
+    Name        = "triaige-ec2-mcp"
+    Project     = "triaige"
+    Component   = "mcp"
+    ManagedBy   = "terraform"
+    Environment = var.environment
+  }
+}
+
+resource "aws_instance" "mysql" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.medium"
   subnet_id                   = var.private_subnet
   associate_public_ip_address = false
-  security_groups             = [var.sg_private_triaige_id]
-  iam_instance_profile        = "LabInstanceProfile"
-  key_name                    = aws_key_pair.private_key.key_name
+  vpc_security_group_ids      = [var.sg_mysql_id]
+  iam_instance_profile        = var.iam_instance_profile
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 20
+    encrypted   = true
+  }
 
   tags = {
-    Name = "ec2-private-banco-dados"
+    Name        = "triaige-ec2-mysql"
+    Project     = "triaige"
+    Component   = "database"
+    ManagedBy   = "terraform"
+    Environment = var.environment
   }
+}
+
+resource "aws_ebs_volume" "mysql_data" {
+  availability_zone = aws_instance.mysql.availability_zone
+  size              = 100
+  type              = "gp3"
+  encrypted         = true
+
+  tags = {
+    Name        = "triaige-ebs-mysql-data"
+    Project     = "triaige"
+    Component   = "database"
+    ManagedBy   = "terraform"
+    Environment = var.environment
+  }
+}
+
+resource "aws_volume_attachment" "mysql_data" {
+  device_name = "/dev/sdf"
+  volume_id   = aws_ebs_volume.mysql_data.id
+  instance_id = aws_instance.mysql.id
 }

@@ -102,6 +102,7 @@ jobs:
             --arg docs_preprocessing "$(jq -r '.sqs_queues.value["triaige-docs-preprocessing"]' "$TFOUT")" \
             --arg results_ready "$(jq -r '.sqs_queues.value["triaige-results-ready"]' "$TFOUT")" \
             --arg raw_bucket "$(jq -r '.s3_buckets.value.raw' "$TFOUT")" \
+            --arg trusted_bucket "$(jq -r '.s3_buckets.value.trusted' "$TFOUT")" \
             --arg curated_bucket "$(jq -r '.s3_buckets.value.curated' "$TFOUT")" \
             --arg db_username "${{ secrets.PROD_DB_USERNAME }}" \
             --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \
@@ -116,6 +117,7 @@ jobs:
               docs_preprocessing_queue_url: $docs_preprocessing,
               results_ready_queue_url: $results_ready,
               raw_documents_bucket: $raw_bucket,
+              trusted_documents_bucket: $trusted_bucket,
               curated_results_bucket: $curated_bucket,
               ai_service_base_url: "http://localhost:8082",
               gemini_api_key: $gemini_api_key,

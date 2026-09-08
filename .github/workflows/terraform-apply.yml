@@ -16,38 +16,31 @@
 #
 # Estrutura de jobs:
 #   1. apply               - terraform apply e publica os outputs (tfout.json)
-#                             como artifact para os jobs seguintes.
-#   2. deploy-app-services  - (Ansible) sobe triaige-srv-ai,
-#                             triaige-srv-orchestrator e
-#                             triaige-srv-notification nas EC2 públicas.
-#   3. configure-mysql      - (Ansible) instala/configura o MySQL na
-#                             ec2-private-banco-dados (databases
-#                             triaige_srv_orchestrator e
-#                             triaige_srv_notification), via ProxyJump por
-#                             uma das EC2 públicas.
-# Os jobs 2 e 3 dependem apenas do job 1 e rodam em paralelo.
+#                             como artifact para o job seguinte.
+#   2. configure-mysql      - (Ansible) instala/configura o MySQL na
+#                             ec2-private-banco-dados (banco único "triaige",
+#                             usuário triaige, schema + seed de conveniência),
+#                             via ProxyJump por uma das EC2 públicas.
+# O job 2 depende apenas do job 1.
 #
-# Secrets adicionais usados pelos jobs de Ansible:
+# O deploy dos serviços de app (triaige-srv-mcp-ai, triaige-srv-orchestrator,
+# triaige-srv-notification) NÃO roda mais aqui — foi desacoplado pro workflow
+# "Deploy Apps" (deploy-apps.yml), disparado sob demanda (workflow_dispatch)
+# igual este, mas sem precisar reprovisionar infra. Depois de um apply que
+# recria as EC2 públicas (ex: troca de AMI), rode "Deploy Apps" em seguida
+# pra subir os containers.
+#
+# Secrets adicionais usados pelo job de Ansible:
 #   - EC2_SSH_PRIVATE_KEY: conteúdo do arquivo
 #     terraform/keys/key-ec2-public-triaige.pem (chave SSH das EC2 públicas,
 #     usuário "ubuntu"). Esse arquivo é gitignored, copie o conteúdo local.
-#     Usado tanto para o deploy das EC2 públicas quanto como jump host (proxy)
-#     para alcançar a EC2 privada.
+#     Usado como jump host (proxy) para alcançar a EC2 privada.
 #   - EC2_PRIVATE_SSH_KEY: conteúdo do arquivo
 #     terraform/keys/key-ec2-private-triaige.pem (chave SSH da
 #     ec2-private-banco-dados, usuário "ubuntu"). Também gitignored.
 #   - PROD_DB_USERNAME / PROD_DB_PASSWORD: credenciais do MySQL usadas pelo
 #     triaige-srv-orchestrator e pelo triaige-srv-notification (perfil prod),
-#     na ec2-private-banco-dados (databases diferentes, mesmo usuário).
-#   - GEMINI_API_KEY_PROD: chave Gemini de produção, usada pelo triaige-srv-ai.
-#   - CROSS_REPO_TOKEN: também é reaproveitado aqui para clonar nas EC2
-#     públicas os repositórios privados triaige-srv-ai-config,
-#     triaige-srv-orchestrator-config e triaige-srv-notification-config.
-#
-# Nenhum secret novo é necessário para o triaige-srv-notification: o e-mail
-# remetente do SES vem do output `ses_sender_email` do Terraform (variável
-# ses_sender_email em terraform/variables.tf), e as credenciais AWS do
-# processo em si vêm do LabInstanceProfile da EC2 (DefaultCredentialsProvider).
+#     na ec2-private-banco-dados (banco único, mesmo usuário).
 #
 # State remoto: como o backend continua local (terraform.tfstate não está
 # versionado), o state é guardado entre execuções usando o cache do GitHub
@@ -55,16 +48,6 @@
 # dias sem uso — se isso acontecer, o próximo apply/destroy não terá o state
 # anterior. Ver aviso equivalente no workflow de destroy.
 #
-# Lambda triaige-fn-ocr-normalizer: o módulo terraform/modules/compute/lambda
-# exige um pacote .zip já existente (filebase64sha256). Este workflow faz
-# checkout do repositório TriAIge/triaige-fn-ocr-normalizer e gera o pacote
-# antes do apply, seguindo as instruções do README daquele repositório.
-#
-# Caso TriAIge/triaige-fn-ocr-normalizer seja um repositório privado, crie um
-# Secret CROSS_REPO_TOKEN com um PAT (classic ou fine-grained) com permissão
-# de leitura de conteúdo nesse repositório. Se o repositório for público,
-# CROSS_REPO_TOKEN pode ficar sem valor (usa o GITHUB_TOKEN padrão).
-
 name: Terraform Apply
 
 on:
@@ -84,44 +67,6 @@ jobs:
     steps:
       - name: Checkout triaige-infra
         uses: actions/checkout@v6
-
-      - name: Checkout triaige-fn-ocr-normalizer
-        uses: actions/checkout@v6
-        with:
-          repository: TriAIge/triaige-fn-ocr-normalizer
-          path: ocr-normalizer
-          token: ${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
-
-      - name: Configurar Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Empacotar Lambda triaige-fn-ocr-normalizer
-        working-directory: ocr-normalizer
-        run: |
-          set -euo pipefail
-          rm -rf build triaige-fn-ocr-normalizer.zip
-          mkdir -p build
-          pip install \
-            "pymupdf>=1.23" \
-            "pytesseract>=0.3.10" \
-            "pillow>=10.0" \
-            "python-docx>=1.1" \
-            -t build/ \
-            --platform manylinux2014_x86_64 \
-            --only-binary=:all:
-          cp lambda_function.py extrator_juridico.py anonimizador.py build/
-          find build -type d \( -name "__pycache__" -o -name "tests" -o -name "test" -o -name "*.dist-info" -o -name "*.egg-info" \) -prune -exec rm -rf {} +
-          find build -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete
-          (cd build && zip -rq ../triaige-fn-ocr-normalizer.zip .)
-          mv triaige-fn-ocr-normalizer.zip build/
-          zip_size="$(stat -c%s build/triaige-fn-ocr-normalizer.zip)"
-          ls -lh build/triaige-fn-ocr-normalizer.zip
-          if [ "$zip_size" -ge 50000000 ]; then
-            echo "::error::Pacote Lambda com ${zip_size} bytes. O upload direto da Lambda deve ficar abaixo de 50 MB; remova dependencias ou use S3/container image."
-            exit 1
-          fi
 
       - name: Configurar credenciais AWS (Academy/Learner Lab)
         uses: aws-actions/configure-aws-credentials@v6
@@ -148,9 +93,7 @@ jobs:
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform apply -auto-approve \
-            -var="lambda_ocr_normalizer_package_path=../ocr-normalizer/build/triaige-fn-ocr-normalizer.zip"
+        run: terraform apply -auto-approve
 
       - name: Exportar outputs do Terraform
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -187,83 +130,6 @@ jobs:
         with:
           path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
           key: tfstate-cache
-
-  deploy-app-services:
-    name: Deploy triaige-srv-ai e triaige-srv-orchestrator (EC2 públicas)
-    needs: apply
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout triaige-infra
-        uses: actions/checkout@v6
-
-      - name: Baixar outputs do Terraform
-        uses: actions/download-artifact@v4
-        with:
-          name: tfout
-          path: ${{ env.TF_WORKING_DIR }}
-
-      - name: Gerar inventario e variaveis do Ansible (EC2 publicas)
-        run: |
-          set -euo pipefail
-          TFOUT="${{ env.TF_WORKING_DIR }}/tfout.json"
-
-          {
-            echo "[triaige_public]"
-            jq -r '.ec2_public_ips.value[]' "$TFOUT" | while read -r ip; do
-              echo "$ip ansible_user=ubuntu"
-            done
-          } > ansible/inventory.ini
-
-          jq -n \
-            --arg db_host "$(jq -r '.ec2_private_ip.value' "$TFOUT")" \
-            --arg aws_region "${{ env.AWS_REGION }}" \
-            --arg docs_received "$(jq -r '.queue_urls.value["triaige-docs-received"]' "$TFOUT")" \
-            --arg docs_preprocessing "$(jq -r '.queue_urls.value["triaige-docs-preprocessing"]' "$TFOUT")" \
-            --arg results_ready "$(jq -r '.queue_urls.value["triaige-results-ready"]' "$TFOUT")" \
-            --arg raw_bucket "$(jq -r '.s3_raw.value' "$TFOUT")" \
-            --arg curated_bucket "$(jq -r '.s3_curated.value' "$TFOUT")" \
-            --arg ses_sender_email "$(jq -r '.ses_sender_email.value' "$TFOUT")" \
-            --arg db_username "${{ secrets.PROD_DB_USERNAME }}" \
-            --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \
-            --arg gemini_api_key "${{ secrets.GEMINI_API_KEY_PROD }}" \
-            --arg github_token "${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}" \
-            '{
-              db_host: $db_host,
-              db_username: $db_username,
-              db_password: $db_password,
-              aws_region: $aws_region,
-              docs_received_queue_url: $docs_received,
-              docs_preprocessing_queue_url: $docs_preprocessing,
-              results_ready_queue_url: $results_ready,
-              raw_documents_bucket: $raw_bucket,
-              curated_results_bucket: $curated_bucket,
-              ai_service_base_url: "http://localhost:8082",
-              gemini_api_key: $gemini_api_key,
-              ses_sender_email: $ses_sender_email,
-              github_token: $github_token
-            }' > ansible/vars.json
-
-      - name: Configurar chave SSH para o Ansible
-        working-directory: ansible
-        run: |
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > id_ec2_public.pem
-          chmod 600 id_ec2_public.pem
-
-      - name: Instalar Ansible
-        run: pip install --user ansible
-
-      - name: Deploy triaige-srv-ai e triaige-srv-orchestrator (Ansible)
-        working-directory: ansible
-        run: |
-          ansible-playbook -i inventory.ini \
-            --private-key id_ec2_public.pem \
-            --extra-vars "@vars.json" \
-            playbook-deploy-services.yml
-
-      - name: Limpar credenciais temporarias do Ansible
-        if: always()
-        working-directory: ansible
-        run: rm -f id_ec2_public.pem vars.json inventory.ini
 
   configure-mysql:
     name: Configurar MySQL (EC2 privada)

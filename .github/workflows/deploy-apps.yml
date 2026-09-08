@@ -1,0 +1,144 @@
+# Deploy Apps (TriAIge)
+#
+# Disparo manual (workflow_dispatch) que reaplica o deploy dos servicos de
+# app (triaige-srv-mcp-ai, triaige-srv-orchestrator, triaige-srv-notification)
+# nas EC2 publicas, SEM tocar em infra (nao roda terraform apply).
+#
+# Decoupled de "Terraform Apply": este workflow le o state do Terraform ja
+# aplicado (cache "tfstate-cache", restaurado read-only) so pra saber os IPs
+# atuais e outputs de infra (buckets, filas, IP do banco). Por isso:
+#   - Nao precisa das credenciais AWS do Academy Learner Lab (terraform
+#     output nao chama a API da AWS, so le o state local).
+#   - So funciona depois de pelo menos um "Terraform Apply" bem-sucedido
+#     nesta sessao de cache (~7 dias de retencao no GitHub Actions).
+#
+# Use este workflow pra redeployar codigo novo das apps (merge em main, ou
+# uma branch/tag especifica via o input app_ref) sem precisar reprovisionar
+# infra.
+#
+# Pré-requisitos (Secrets do repositório, em Settings > Secrets and
+# variables > Actions) - os mesmos ja usados por "Terraform Apply":
+#   - EC2_SSH_PRIVATE_KEY, PROD_DB_USERNAME, PROD_DB_PASSWORD,
+#     GEMINI_API_KEY_PROD, SES_SENDER_EMAIL, CROSS_REPO_TOKEN (ou o
+#     GITHUB_TOKEN padrao). CROSS_REPO_TOKEN so e necessario hoje pra
+#     triaige-srv-notification-config (unico repo *-config que ainda existe
+#     nesse formato); triaige-srv-mcp-ai-config e triaige-srv-orchestrator-config
+#     foram descontinuados - a config de producao desses dois servicos agora
+#     vem de env var/template local (ver ansible/playbook-deploy-services.yml).
+
+name: Deploy Apps
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_ref:
+        description: "Branch/tag/commit dos repos de app a deployar (triaige-srv-mcp-ai, triaige-srv-orchestrator, triaige-srv-notification)"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  AWS_REGION: us-east-1
+  TF_WORKING_DIR: terraform
+
+jobs:
+  deploy-apps:
+    name: Deploy triaige-srv-mcp-ai, triaige-srv-orchestrator e triaige-srv-notification (EC2 públicas)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout triaige-infra
+        uses: actions/checkout@v6
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Restaurar state remoto (cache)
+        id: tfstate-restore
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.TF_WORKING_DIR }}/terraform.tfstate
+          key: tfstate-cache
+
+      - name: Verificar se o state foi restaurado
+        if: steps.tfstate-restore.outputs.cache-hit != 'true'
+        run: |
+          echo "::error::Nenhum terraform.tfstate encontrado no cache 'tfstate-cache'. Rode o workflow 'Terraform Apply' pelo menos uma vez antes de usar 'Deploy Apps'."
+          exit 1
+
+      - name: Terraform Init (sem credenciais AWS - so le o state local)
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      - name: Exportar outputs do Terraform
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform output -json > tfout.json
+
+      - name: Gerar inventario e variaveis do Ansible (EC2 publicas)
+        run: |
+          set -euo pipefail
+          TFOUT="${{ env.TF_WORKING_DIR }}/tfout.json"
+
+          {
+            echo "[triaige_public]"
+            jq -r '.ec2_public_ips.value[]' "$TFOUT" | while read -r ip; do
+              echo "$ip ansible_user=ubuntu"
+            done
+          } > ansible/inventory.ini
+
+          jq -n \
+            --arg db_host "$(jq -r '.ec2_private_ip.value' "$TFOUT")" \
+            --arg aws_region "${{ env.AWS_REGION }}" \
+            --arg docs_received "$(jq -r '.queue_urls.value["triaige-docs-received"]' "$TFOUT")" \
+            --arg docs_preprocessing "$(jq -r '.queue_urls.value["triaige-docs-preprocessing"]' "$TFOUT")" \
+            --arg results_ready "$(jq -r '.queue_urls.value["triaige-results-ready"]' "$TFOUT")" \
+            --arg raw_bucket "$(jq -r '.s3_raw.value' "$TFOUT")" \
+            --arg curated_bucket "$(jq -r '.s3_curated.value' "$TFOUT")" \
+            --arg ses_sender_email "${{ secrets.SES_SENDER_EMAIL }}" \
+            --arg db_username "${{ secrets.PROD_DB_USERNAME }}" \
+            --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \
+            --arg gemini_api_key "${{ secrets.GEMINI_API_KEY_PROD }}" \
+            --arg github_token "${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}" \
+            --arg app_git_ref "${{ inputs.app_ref }}" \
+            '{
+              db_host: $db_host,
+              db_username: $db_username,
+              db_password: $db_password,
+              aws_region: $aws_region,
+              docs_received_queue_url: $docs_received,
+              docs_preprocessing_queue_url: $docs_preprocessing,
+              results_ready_queue_url: $results_ready,
+              raw_documents_bucket: $raw_bucket,
+              curated_results_bucket: $curated_bucket,
+              ai_service_base_url: "http://localhost:8082",
+              gemini_api_key: $gemini_api_key,
+              ses_sender_email: $ses_sender_email,
+              github_token: $github_token,
+              app_git_ref: $app_git_ref
+            }' > ansible/vars.json
+
+      - name: Configurar chave SSH para o Ansible
+        working-directory: ansible
+        run: |
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > id_ec2_public.pem
+          chmod 600 id_ec2_public.pem
+
+      - name: Instalar Ansible
+        run: pip install --user ansible
+
+      - name: Deploy triaige-srv-mcp-ai, triaige-srv-orchestrator e triaige-srv-notification (Ansible)
+        working-directory: ansible
+        run: |
+          ansible-playbook -i inventory.ini \
+            --private-key id_ec2_public.pem \
+            --extra-vars "@vars.json" \
+            playbook-deploy-services.yml
+
+      - name: Limpar credenciais temporarias do Ansible
+        if: always()
+        working-directory: ansible
+        run: rm -f id_ec2_public.pem vars.json inventory.ini

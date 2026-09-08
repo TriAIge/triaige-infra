@@ -21,7 +21,7 @@ resource "aws_lb_target_group" "tg_orchestrator" {
   target_type = "instance"
 
   health_check {
-    path                = "/"
+    path                = "/actuator/health"
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
@@ -43,7 +43,7 @@ resource "aws_lb_target_group" "tg_ai" {
   target_type = "instance"
 
   health_check {
-    path                = "/health"
+    path                = "/actuator/health"
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
@@ -65,7 +65,7 @@ resource "aws_lb_target_group" "tg_notification" {
   target_type = "instance"
 
   health_check {
-    path                = "/health"
+    path                = "/actuator/health"
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
@@ -128,6 +128,68 @@ resource "aws_lb_target_group_attachment" "app" {
   port             = each.value.port
 }
 
+resource "aws_lb_listener" "listener_80" {
+  load_balancer_arn = aws_lb.alb_triaige.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_frontend.arn
+  }
+}
+
+resource "aws_lb_listener_rule" "orchestrator_http" {
+  listener_arn = aws_lb_listener.listener_80.arn
+  priority     = 10
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_orchestrator.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/orchestrator/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "ai_http" {
+  listener_arn = aws_lb_listener.listener_80.arn
+  priority     = 20
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_ai.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/ai/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "notification_http" {
+  listener_arn = aws_lb_listener.listener_80.arn
+  priority     = 30
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_notification.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/notification/*"]
+    }
+  }
+}
+
+# listener_443 so existe se um certificado ACM real for passado em
+# var.acm_certificate_arn (default ""). Ate la, o trafego roda por HTTP na
+# porta 80 (listener_80 acima) - troque pra HTTPS quando tiver dominio+ACM.
 resource "aws_lb_listener" "listener_443" {
   count             = var.acm_certificate_arn == "" ? 0 : 1
   load_balancer_arn = aws_lb.alb_triaige.arn

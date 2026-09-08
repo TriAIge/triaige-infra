@@ -1,19 +1,24 @@
-data "aws_ami" "amazon_linux_2023" {
+data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-*-24.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
   }
 }
 
 resource "aws_instance" "bff_front" {
-  ami                         = data.aws_ami.amazon_linux_2023.id
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t3.large"
   subnet_id                   = var.public_subnet_a
   associate_public_ip_address = true
-  vpc_security_group_ids      = [var.sg_bff_front_id]
+  vpc_security_group_ids      = [var.sg_app_id]
   iam_instance_profile        = var.iam_instance_profile
 
   root_block_device {
@@ -32,11 +37,11 @@ resource "aws_instance" "bff_front" {
 }
 
 resource "aws_instance" "mcp" {
-  ami                         = data.aws_ami.amazon_linux_2023.id
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t3.large"
   subnet_id                   = var.public_subnet_b
   associate_public_ip_address = true
-  vpc_security_group_ids      = [var.sg_mcp_id]
+  vpc_security_group_ids      = [var.sg_app_id]
   iam_instance_profile        = var.iam_instance_profile
 
   root_block_device {
@@ -55,7 +60,7 @@ resource "aws_instance" "mcp" {
 }
 
 resource "aws_instance" "mysql" {
-  ami                         = data.aws_ami.amazon_linux_2023.id
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t3.medium"
   subnet_id                   = var.private_subnet
   associate_public_ip_address = false

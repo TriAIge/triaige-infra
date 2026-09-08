@@ -7,10 +7,10 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name      = "rt-public-triaige"
-    Project   = "triaige"
-    Component = "network"
-    ManagedBy = "terraform"
+    Name        = "rt-public-triaige"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
     Environment = var.environment
   }
 }
@@ -34,10 +34,10 @@ resource "aws_route_table" "private" {
   }
 
   tags = {
-    Name      = "rt-private-triaige"
-    Project   = "triaige"
-    Component = "network"
-    ManagedBy = "terraform"
+    Name        = "rt-private-triaige"
+    Project     = "triaige"
+    Component   = "network"
+    ManagedBy   = "terraform"
     Environment = var.environment
   }
 }

@@ -43,8 +43,7 @@ module "ec2" {
   public_subnet_a      = module.network.public_subnet_a_id
   public_subnet_b      = module.network.public_subnet_b_id
   private_subnet       = module.network.private_subnet_id
-  sg_bff_front_id      = module.network.sg_bff_front_id
-  sg_mcp_id            = module.network.sg_mcp_id
+  sg_app_id            = module.network.sg_app_id
   sg_mysql_id          = module.network.sg_mysql_id
 }
 

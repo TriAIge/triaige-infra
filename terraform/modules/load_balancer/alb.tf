@@ -101,34 +101,26 @@ resource "aws_lb_target_group" "tg_frontend" {
   }
 }
 
-resource "aws_lb_target_group" "tg_mcp" {
-  name        = "tg-mcp"
-  port        = 8084
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "instance"
-
-  health_check {
-    path                = "/health"
-    protocol            = "HTTP"
-    matcher             = "200-399"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-  }
-
-  tags = {
-    Name = "tg-mcp"
-  }
-}
-
-resource "aws_lb_target_group_attachment" "bff_front" {
+resource "aws_lb_target_group_attachment" "app" {
   for_each = {
-    orchestrator = { port = 8080, target = var.ec2_ids_triaige[0], target_group = aws_lb_target_group.tg_orchestrator.arn }
-    ai          = { port = 8082, target = var.ec2_ids_triaige[0], target_group = aws_lb_target_group.tg_ai.arn }
-    notification = { port = 8083, target = var.ec2_ids_triaige[0], target_group = aws_lb_target_group.tg_notification.arn }
-    frontend    = { port = 3000, target = var.ec2_ids_triaige[0], target_group = aws_lb_target_group.tg_frontend.arn }
+    for pair in setproduct(
+      ["orchestrator", "ai", "notification", "frontend"],
+      [0, 1]
+      ) : "${pair[0]}-${pair[1]}" => {
+      port = {
+        orchestrator = 8080
+        ai           = 8082
+        notification = 8083
+        frontend     = 3000
+      }[pair[0]]
+      target = var.ec2_ids_triaige[pair[1]]
+      target_group = {
+        orchestrator = aws_lb_target_group.tg_orchestrator.arn
+        ai           = aws_lb_target_group.tg_ai.arn
+        notification = aws_lb_target_group.tg_notification.arn
+        frontend     = aws_lb_target_group.tg_frontend.arn
+      }[pair[0]]
+    }
   }
 
   target_group_arn = each.value.target_group
@@ -136,14 +128,8 @@ resource "aws_lb_target_group_attachment" "bff_front" {
   port             = each.value.port
 }
 
-resource "aws_lb_target_group_attachment" "mcp" {
-  target_group_arn = aws_lb_target_group.tg_mcp.arn
-  target_id        = var.ec2_ids_triaige[1]
-  port             = 8084
-}
-
 resource "aws_lb_listener" "listener_443" {
-  count              = var.acm_certificate_arn == "" ? 0 : 1
+  count             = var.acm_certificate_arn == "" ? 0 : 1
   load_balancer_arn = aws_lb.alb_triaige.arn
   port              = 443
   protocol          = "HTTPS"
@@ -202,23 +188,6 @@ resource "aws_lb_listener_rule" "notification" {
   condition {
     path_pattern {
       values = ["/api/notification/*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "mcp" {
-  count        = var.acm_certificate_arn == "" ? 0 : 1
-  listener_arn = aws_lb_listener.listener_443[0].arn
-  priority     = 40
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.tg_mcp.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/api/mcp/*"]
     }
   }
 }

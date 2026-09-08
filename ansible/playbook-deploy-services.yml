@@ -3,36 +3,29 @@
 # Sobe, em cada EC2 publica (ec2-public-triaige-us-east-1a e -1b):
 #   - triaige-srv-mcp-ai          (porta 8082)
 #   - triaige-srv-orchestrator (porta 8080)
-#   - triaige-srv-notification (porta 8083)
+#
+# triaige-srv-notification (porta 8083) esta desativado por enquanto - nem o
+# repo do servico nem triaige-srv-notification-config existem ainda. As
+# tasks correspondentes estao comentadas mais abaixo.
 #
 # As imagens sao construidas localmente em cada instancia a partir do
 # Dockerfile de cada repositorio (git clone + docker build), sem depender de
 # nenhum registry (ECR ou outro).
 #
-# Config de producao: triaige-srv-mcp-ai e triaige-srv-orchestrator NAO
-# dependem mais de repos *-config separados (triaige-srv-mcp-ai-config e
-# triaige-srv-orchestrator-config foram descontinuados). O srv-mcp-ai recebe
-# o segredo direto via env var no container; o srv-orchestrator tem seu
-# application-prod.yml renderizado a partir do template local
-# ansible/templates/triaige-srv-orchestrator/application-prod.yml.j2.
-# triaige-srv-notification ainda usa o padrao antigo (repos
-# triaige-srv-notification / triaige-srv-notification-config) mas nenhum dos
-# dois repos foi criado ainda - esse bloco do playbook so vai funcionar
-# quando eles existirem (ou for migrado pro mesmo padrao dos outros dois).
+# Config de producao: nenhum dos dois servicos ativos depende mais de repos
+# *-config separados (triaige-srv-mcp-ai-config e triaige-srv-orchestrator-config
+# foram descontinuados). O srv-mcp-ai recebe o segredo direto via env var no
+# container; o srv-orchestrator tem seu application-prod.yml renderizado a
+# partir do template local ansible/templates/triaige-srv-orchestrator/application-prod.yml.j2.
 #
 # Variaveis esperadas (via --extra-vars, geradas no workflow a partir dos
 # outputs do Terraform e de Secrets do GitHub):
-#   github_token                 - token para clonar os repos de app e,
-#                                   por enquanto, triaige-srv-notification-config
 #   app_git_ref                  - branch/tag/commit dos repos de app a
-#                                   deployar (default: main). Nao se aplica
-#                                   a triaige-srv-notification-config, que fica
-#                                   sempre em main.
+#                                   deployar (default: main)
 #   db_host                      - IP privado da ec2-private-banco-dados
 #   db_username / db_password    - credenciais do MySQL (perfil prod), usadas
-#                                   tanto por triaige-srv-orchestrator quanto
-#                                   por triaige-srv-notification (banco unico
-#                                   "triaige", mesmo usuario)
+#                                   por triaige-srv-orchestrator (banco unico
+#                                   "triaige")
 #   aws_region                   - regiao AWS (us-east-1)
 #   docs_received_queue_url
 #   docs_preprocessing_queue_url
@@ -41,8 +34,9 @@
 #   curated_results_bucket
 #   ai_service_base_url          - URL do srv-ai a partir do srv-orchestrator
 #   gemini_api_key                - chave Gemini de producao
-#   ses_sender_email              - e-mail verificado no SES (output do Terraform),
-#                                   usado como SES_FROM_EMAIL por triaige-srv-notification
+#
+# github_token e ses_sender_email nao sao mais passados por padrao (so tinham
+# consumidor no bloco desativado de triaige-srv-notification).
 #
 # Rolling deploy: o play principal roda com serial: 1, ou seja, atualiza uma
 # EC2 publica por vez (aguardando health check antes de seguir pra proxima),
@@ -101,7 +95,6 @@
       loop:
         - "{{ apps_dir }}"
         - "{{ config_dir }}/triaige-srv-orchestrator-config"
-        - "{{ config_dir }}/triaige-srv-notification-config"
 
     # ── triaige-srv-mcp-ai ──────────────────────────────────────────────────────
     - name: Clonar/atualizar triaige-srv-mcp-ai
@@ -187,68 +180,74 @@
       delay: 5
 
     # ── triaige-srv-notification ────────────────────────────────────────────
-    - name: Clonar/atualizar triaige-srv-notification
-      ansible.builtin.git:
-        repo: "https://github.com/{{ github_org }}/triaige-srv-notification.git"
-        dest: "{{ apps_dir }}/triaige-srv-notification"
-        version: "{{ app_git_ref }}"
-        force: true
-
-    - name: Clonar/atualizar triaige-srv-notification-config
-      ansible.builtin.git:
-        repo: "https://x-access-token:{{ github_token }}@github.com/{{ github_org }}/triaige-srv-notification-config.git"
-        dest: "{{ apps_dir }}/triaige-srv-notification-config"
-        version: main
-        force: true
-      no_log: true
-
-    - name: Renderizar application-prod.yml (srv-notification) a partir do .example
-      ansible.builtin.copy:
-        src: "{{ apps_dir }}/triaige-srv-notification-config/application-prod.yml.example"
-        dest: "{{ config_dir }}/triaige-srv-notification-config/application-prod.yml"
-        remote_src: true
-        mode: "0644"
-
-    - name: Substituir placeholders em application-prod.yml (srv-notification)
-      ansible.builtin.replace:
-        path: "{{ config_dir }}/triaige-srv-notification-config/application-prod.yml"
-        regexp: "{{ item.regexp }}"
-        replace: "{{ item.replace }}"
-      loop:
-        - { regexp: "__DB_HOST__", replace: "{{ db_host }}" }
-        - { regexp: "__DB_USERNAME__", replace: "{{ db_username }}" }
-        - { regexp: "__DB_PASSWORD__", replace: "{{ db_password }}" }
-        - { regexp: "__AWS_REGION__", replace: "{{ aws_region }}" }
-        - { regexp: "__RESULTS_READY_QUEUE_URL__", replace: "{{ results_ready_queue_url }}" }
-        - { regexp: "__SES_FROM_EMAIL__", replace: "{{ ses_sender_email }}" }
-      no_log: true
-
-    - name: Build da imagem triaige-srv-notification
-      ansible.builtin.command: docker build -t triaige-srv-notification:latest .
-      args:
-        chdir: "{{ apps_dir }}/triaige-srv-notification"
-
-    - name: Remover container anterior triaige-srv-notification
-      ansible.builtin.command: docker rm -f triaige-srv-notification
-      register: rm_srv_notification
-      failed_when: false
-      changed_when: rm_srv_notification.rc == 0
-
-    - name: Subir container triaige-srv-notification
-      ansible.builtin.command: >
-        docker run -d --name triaige-srv-notification
-        --restart unless-stopped
-        --network host
-        -e SPRING_PROFILES_ACTIVE=prod
-        -e CONFIG_REPO_PATH=/config/
-        -v {{ config_dir }}/triaige-srv-notification-config:/config:ro
-        triaige-srv-notification:latest
-
-    - name: Aguardar triaige-srv-notification ficar saudavel
-      ansible.builtin.uri:
-        url: http://localhost:8083/actuator/health
-        status_code: 200
-      register: health_srv_notification
-      until: health_srv_notification.status == 200
-      retries: 10
-      delay: 5
+    # Desativado: nem triaige-srv-notification nem triaige-srv-notification-config
+    # existem como repositorio ainda. Reative estas tasks (e volte a passar
+    # github_token/ses_sender_email no vars.json do deploy-apps.yml) quando o
+    # servico for criado - de preferencia ja migrado pro mesmo padrao de
+    # mcp-ai/orchestrator (template Jinja2 local em vez de repo *-config).
+    #
+    # - name: Clonar/atualizar triaige-srv-notification
+    #   ansible.builtin.git:
+    #     repo: "https://github.com/{{ github_org }}/triaige-srv-notification.git"
+    #     dest: "{{ apps_dir }}/triaige-srv-notification"
+    #     version: "{{ app_git_ref }}"
+    #     force: true
+    #
+    # - name: Clonar/atualizar triaige-srv-notification-config
+    #   ansible.builtin.git:
+    #     repo: "https://x-access-token:{{ github_token }}@github.com/{{ github_org }}/triaige-srv-notification-config.git"
+    #     dest: "{{ apps_dir }}/triaige-srv-notification-config"
+    #     version: main
+    #     force: true
+    #   no_log: true
+    #
+    # - name: Renderizar application-prod.yml (srv-notification) a partir do .example
+    #   ansible.builtin.copy:
+    #     src: "{{ apps_dir }}/triaige-srv-notification-config/application-prod.yml.example"
+    #     dest: "{{ config_dir }}/triaige-srv-notification-config/application-prod.yml"
+    #     remote_src: true
+    #     mode: "0644"
+    #
+    # - name: Substituir placeholders em application-prod.yml (srv-notification)
+    #   ansible.builtin.replace:
+    #     path: "{{ config_dir }}/triaige-srv-notification-config/application-prod.yml"
+    #     regexp: "{{ item.regexp }}"
+    #     replace: "{{ item.replace }}"
+    #   loop:
+    #     - { regexp: "__DB_HOST__", replace: "{{ db_host }}" }
+    #     - { regexp: "__DB_USERNAME__", replace: "{{ db_username }}" }
+    #     - { regexp: "__DB_PASSWORD__", replace: "{{ db_password }}" }
+    #     - { regexp: "__AWS_REGION__", replace: "{{ aws_region }}" }
+    #     - { regexp: "__RESULTS_READY_QUEUE_URL__", replace: "{{ results_ready_queue_url }}" }
+    #     - { regexp: "__SES_FROM_EMAIL__", replace: "{{ ses_sender_email }}" }
+    #   no_log: true
+    #
+    # - name: Build da imagem triaige-srv-notification
+    #   ansible.builtin.command: docker build -t triaige-srv-notification:latest .
+    #   args:
+    #     chdir: "{{ apps_dir }}/triaige-srv-notification"
+    #
+    # - name: Remover container anterior triaige-srv-notification
+    #   ansible.builtin.command: docker rm -f triaige-srv-notification
+    #   register: rm_srv_notification
+    #   failed_when: false
+    #   changed_when: rm_srv_notification.rc == 0
+    #
+    # - name: Subir container triaige-srv-notification
+    #   ansible.builtin.command: >
+    #     docker run -d --name triaige-srv-notification
+    #     --restart unless-stopped
+    #     --network host
+    #     -e SPRING_PROFILES_ACTIVE=prod
+    #     -e CONFIG_REPO_PATH=/config/
+    #     -v {{ config_dir }}/triaige-srv-notification-config:/config:ro
+    #     triaige-srv-notification:latest
+    #
+    # - name: Aguardar triaige-srv-notification ficar saudavel
+    #   ansible.builtin.uri:
+    #     url: http://localhost:8083/actuator/health
+    #     status_code: 200
+    #   register: health_srv_notification
+    #   until: health_srv_notification.status == 200
+    #   retries: 10
+    #   delay: 5

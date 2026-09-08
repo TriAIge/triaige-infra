@@ -1,8 +1,13 @@
 # Deploy Apps (TriAIge)
 #
 # Disparo manual (workflow_dispatch) que reaplica o deploy dos servicos de
-# app (triaige-srv-mcp-ai, triaige-srv-orchestrator, triaige-srv-notification)
-# nas EC2 publicas, SEM tocar em infra (nao roda terraform apply).
+# app (triaige-srv-mcp-ai, triaige-srv-orchestrator) nas EC2 publicas, SEM
+# tocar em infra (nao roda terraform apply).
+#
+# triaige-srv-notification esta fora por enquanto - nem o repo do servico
+# nem o triaige-srv-notification-config existem ainda. O bloco correspondente
+# em ansible/playbook-deploy-services.yml esta comentado; reative-o (e este
+# comentario) quando o servico existir.
 #
 # Decoupled de "Terraform Apply": este workflow le o state do Terraform ja
 # aplicado (cache "tfstate-cache", restaurado read-only) so pra saber os IPs
@@ -18,13 +23,13 @@
 #
 # Pré-requisitos (Secrets do repositório, em Settings > Secrets and
 # variables > Actions) - os mesmos ja usados por "Terraform Apply":
-#   - EC2_SSH_PRIVATE_KEY, PROD_DB_USERNAME, PROD_DB_PASSWORD,
-#     GEMINI_API_KEY_PROD, SES_SENDER_EMAIL, CROSS_REPO_TOKEN (ou o
-#     GITHUB_TOKEN padrao). CROSS_REPO_TOKEN so e necessario hoje pra
-#     triaige-srv-notification-config (unico repo *-config que ainda existe
-#     nesse formato); triaige-srv-mcp-ai-config e triaige-srv-orchestrator-config
-#     foram descontinuados - a config de producao desses dois servicos agora
-#     vem de env var/template local (ver ansible/playbook-deploy-services.yml).
+#   - EC2_SSH_PRIVATE_KEY, PROD_DB_USERNAME, PROD_DB_PASSWORD, GEMINI_API_KEY_PROD.
+#   - Nenhum repo *-config e mais usado por triaige-srv-mcp-ai ou
+#     triaige-srv-orchestrator (arquitetura descontinuada - a config de
+#     producao desses dois servicos vem de env var/template local, ver
+#     ansible/playbook-deploy-services.yml). SES_SENDER_EMAIL e CROSS_REPO_TOKEN
+#     so seriam necessarios de novo se/quando triaige-srv-notification for
+#     reativado.
 
 name: Deploy Apps
 
@@ -32,7 +37,7 @@ on:
   workflow_dispatch:
     inputs:
       app_ref:
-        description: "Branch/tag/commit dos repos de app a deployar (triaige-srv-mcp-ai, triaige-srv-orchestrator, triaige-srv-notification)"
+        description: "Branch/tag/commit dos repos de app a deployar (triaige-srv-mcp-ai, triaige-srv-orchestrator)"
         required: false
         default: "main"
 
@@ -46,7 +51,7 @@ env:
 
 jobs:
   deploy-apps:
-    name: Deploy triaige-srv-mcp-ai, triaige-srv-orchestrator e triaige-srv-notification (EC2 públicas)
+    name: Deploy triaige-srv-mcp-ai e triaige-srv-orchestrator (EC2 públicas)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout triaige-infra
@@ -98,11 +103,9 @@ jobs:
             --arg results_ready "$(jq -r '.sqs_queues.value["triaige-results-ready"]' "$TFOUT")" \
             --arg raw_bucket "$(jq -r '.s3_buckets.value.raw' "$TFOUT")" \
             --arg curated_bucket "$(jq -r '.s3_buckets.value.curated' "$TFOUT")" \
-            --arg ses_sender_email "${{ secrets.SES_SENDER_EMAIL }}" \
             --arg db_username "${{ secrets.PROD_DB_USERNAME }}" \
             --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \
             --arg gemini_api_key "${{ secrets.GEMINI_API_KEY_PROD }}" \
-            --arg github_token "${{ secrets.CROSS_REPO_TOKEN || secrets.GITHUB_TOKEN }}" \
             --arg app_git_ref "${{ inputs.app_ref }}" \
             '{
               db_host: $db_host,
@@ -116,10 +119,11 @@ jobs:
               curated_results_bucket: $curated_bucket,
               ai_service_base_url: "http://localhost:8082",
               gemini_api_key: $gemini_api_key,
-              ses_sender_email: $ses_sender_email,
-              github_token: $github_token,
               app_git_ref: $app_git_ref
             }' > ansible/vars.json
+            # ses_sender_email e github_token saem daqui: eram usados so pelo
+            # bloco (comentado) de triaige-srv-notification. Reintroduza-os
+            # quando esse servico for reativado.
 
       - name: Configurar chave SSH para o Ansible
         working-directory: ansible
@@ -130,7 +134,7 @@ jobs:
       - name: Instalar Ansible
         run: pip install --user ansible
 
-      - name: Deploy triaige-srv-mcp-ai, triaige-srv-orchestrator e triaige-srv-notification (Ansible)
+      - name: Deploy triaige-srv-mcp-ai e triaige-srv-orchestrator (Ansible)
         working-directory: ansible
         run: |
           ansible-playbook -i inventory.ini \

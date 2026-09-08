@@ -38,9 +38,9 @@
 #   - EC2_PRIVATE_SSH_KEY: conteúdo do arquivo
 #     terraform/keys/key-ec2-private-triaige.pem (chave SSH da
 #     ec2-private-banco-dados, usuário "ubuntu"). Também gitignored.
-#   - PROD_DB_USERNAME / PROD_DB_PASSWORD: credenciais do MySQL usadas pelo
-#     triaige-srv-orchestrator e pelo triaige-srv-notification (perfil prod),
-#     na ec2-private-banco-dados (banco único, mesmo usuário).
+#   - PROD_DB_USERNAME / PROD_DB_PASSWORD: credenciais do usuario MySQL
+#     criado na ec2-private-banco-dados - as mesmas usadas pelo
+#     triaige-srv-orchestrator (perfil prod) em "Deploy Apps".
 #
 # State remoto: como o backend continua local (terraform.tfstate não está
 # versionado), o state é guardado entre execuções usando o cache do GitHub
@@ -186,12 +186,21 @@ jobs:
       - name: Instalar Ansible
         run: pip install --user ansible
 
+      - name: Gerar variaveis do Ansible (credenciais do banco)
+        working-directory: ansible
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg db_user "${{ secrets.PROD_DB_USERNAME }}" \
+            --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \
+            '{ db_user: $db_user, db_password: $db_password }' > vars.json
+
       - name: Configurar MySQL na ec2-private-banco-dados (Ansible)
         working-directory: ansible
         run: |
-          ansible-playbook -i inventory.ini playbook-configure-mysql.yml
+          ansible-playbook -i inventory.ini --extra-vars "@vars.json" playbook-configure-mysql.yml
 
       - name: Limpar credenciais temporarias do Ansible
         if: always()
         working-directory: ansible
-        run: rm -f id_ec2_public.pem id_ec2_private.pem inventory.ini ssh_config_private
+        run: rm -f id_ec2_public.pem id_ec2_private.pem inventory.ini ssh_config_private vars.json

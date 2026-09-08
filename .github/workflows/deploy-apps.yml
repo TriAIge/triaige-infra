@@ -93,11 +93,11 @@ jobs:
           jq -n \
             --arg db_host "$(jq -r '.ec2_private_ip.value' "$TFOUT")" \
             --arg aws_region "${{ env.AWS_REGION }}" \
-            --arg docs_received "$(jq -r '.queue_urls.value["triaige-docs-received"]' "$TFOUT")" \
-            --arg docs_preprocessing "$(jq -r '.queue_urls.value["triaige-docs-preprocessing"]' "$TFOUT")" \
-            --arg results_ready "$(jq -r '.queue_urls.value["triaige-results-ready"]' "$TFOUT")" \
-            --arg raw_bucket "$(jq -r '.s3_raw.value' "$TFOUT")" \
-            --arg curated_bucket "$(jq -r '.s3_curated.value' "$TFOUT")" \
+            --arg docs_received "$(jq -r '.sqs_queues.value["triaige-docs-received"]' "$TFOUT")" \
+            --arg docs_preprocessing "$(jq -r '.sqs_queues.value["triaige-docs-preprocessing"]' "$TFOUT")" \
+            --arg results_ready "$(jq -r '.sqs_queues.value["triaige-results-ready"]' "$TFOUT")" \
+            --arg raw_bucket "$(jq -r '.s3_buckets.value.raw' "$TFOUT")" \
+            --arg curated_bucket "$(jq -r '.s3_buckets.value.curated' "$TFOUT")" \
             --arg ses_sender_email "${{ secrets.SES_SENDER_EMAIL }}" \
             --arg db_username "${{ secrets.PROD_DB_USERNAME }}" \
             --arg db_password "${{ secrets.PROD_DB_PASSWORD }}" \

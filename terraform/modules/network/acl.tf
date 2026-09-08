@@ -48,6 +48,29 @@ resource "aws_network_acl" "public" {
     cidr_block = "172.16.0.0/16"
   }
 
+  # SSH direto (GitHub Actions runner / maquina local, sem CIDR fixo -
+  # mesma logica do sg_app). NACL e stateless, entao isso e independente da
+  # regra de SG - sem esta entrada, o SG ate libera mas o pacote nunca chega.
+  ingress {
+    rule_no    = 150
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidr_block = "0.0.0.0/0"
+  }
+
+  # Retorno do SSH que a EC2 publica abre para a EC2 privada via ProxyJump
+  # (ec2-private-banco-dados respondendo na porta efemera de quem iniciou).
+  ingress {
+    rule_no    = 160
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 1024
+    to_port    = 65535
+    cidr_block = "172.16.2.0/24"
+  }
+
   egress {
     rule_no    = 100
     action     = "allow"
@@ -89,6 +112,26 @@ resource "aws_network_acl" "private" {
     cidr_block = "172.16.1.0/24"
   }
 
+  # SSH via jump host (ProxyJump pelas EC2 publicas - a EC2 privada nao tem
+  # IP publico, entao so e alcancavel a partir da propria VPC).
+  ingress {
+    rule_no    = 120
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidr_block = "172.16.0.0/24"
+  }
+
+  ingress {
+    rule_no    = 130
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidr_block = "172.16.1.0/24"
+  }
+
   egress {
     rule_no    = 100
     action     = "allow"
@@ -113,6 +156,17 @@ resource "aws_network_acl" "private" {
     protocol   = "tcp"
     from_port  = 3306
     to_port    = 3306
+    cidr_block = "172.16.0.0/16"
+  }
+
+  # Retorno do SSH recebido via ProxyJump (resposta pra porta efemera de
+  # quem conectou, a partir de uma das EC2 publicas).
+  egress {
+    rule_no    = 130
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 1024
+    to_port    = 65535
     cidr_block = "172.16.0.0/16"
   }
 

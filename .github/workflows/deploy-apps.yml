@@ -23,7 +23,7 @@
 #
 # Pré-requisitos (Secrets do repositório, em Settings > Secrets and
 # variables > Actions) - os mesmos ja usados por "Terraform Apply":
-#   - EC2_SSH_PRIVATE_KEY, PROD_DB_USERNAME, PROD_DB_PASSWORD, GEMINI_API_KEY_PROD.
+#   - EC2_PUBLIC_SSH_KEY, PROD_DB_USERNAME, PROD_DB_PASSWORD, GEMINI_API_KEY_PROD.
 #   - Nenhum repo *-config e mais usado por triaige-srv-mcp-ai ou
 #     triaige-srv-orchestrator (arquitetura descontinuada - a config de
 #     producao desses dois servicos vem de env var/template local, ver
@@ -128,7 +128,7 @@ jobs:
       - name: Configurar chave SSH para o Ansible
         working-directory: ansible
         run: |
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > id_ec2_public.pem
+          echo "${{ secrets.EC2_PUBLIC_SSH_KEY }}" > id_ec2_public.pem
           chmod 600 id_ec2_public.pem
 
       - name: Instalar Ansible

@@ -20,7 +20,12 @@
 
 spring:
   datasource:
-    url: jdbc:mysql://{{ db_host }}:3306/triaige_srv_orchestrator?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    # Banco "triaige": schema unico compartilhado com triaige-srv-mcp-ai (ver
+    # ansible/playbook-configure-mysql.yml e ansible/files/triaige-schema-seed.sql
+    # em triaige-infra) - NAO e "triaige_srv_orchestrator" (esse era o default
+    # de dev local do proprio application.yml do orchestrator, banco/schema
+    # diferente).
+    url: jdbc:mysql://{{ db_host }}:3306/triaige?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: {{ db_username }}
     password: {{ db_password }}
 

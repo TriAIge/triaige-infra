@@ -67,6 +67,16 @@
       changed_when: false
       no_log: true
 
+    # CREATE USER IF NOT EXISTS e no-op se o usuario ja existe - nao atualiza
+    # a senha. Sem este ALTER, reexecutar o playbook com um PROD_DB_PASSWORD
+    # diferente do que criou o usuario da primeira vez nao teria efeito, e o
+    # app continuaria autenticando com a senha antiga.
+    - name: Sincronizar senha do usuario MySQL
+      ansible.builtin.command: >
+        mysql -e "ALTER USER '{{ db_user }}'@'%' IDENTIFIED WITH mysql_native_password BY '{{ db_password }}';"
+      changed_when: false
+      no_log: true
+
     - name: Conceder privilegios do usuario nos databases
       ansible.builtin.command: >
         mysql -e "GRANT ALL PRIVILEGES ON {{ item }}.* TO '{{ db_user }}'@'%'; FLUSH PRIVILEGES;"

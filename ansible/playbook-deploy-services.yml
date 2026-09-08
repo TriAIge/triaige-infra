@@ -27,13 +27,14 @@
 #                                   deployar (default: main)
 #   db_host                      - IP privado da ec2-private-banco-dados
 #   db_username / db_password    - credenciais do MySQL (perfil prod), usadas
-#                                   por triaige-srv-orchestrator (banco unico
-#                                   "triaige")
+#                                   por triaige-srv-orchestrator e triaige-srv-mcp-ai
+#                                   (banco unico "triaige")
 #   aws_region                   - regiao AWS (us-east-1)
 #   docs_received_queue_url
-#   docs_preprocessing_queue_url
+#   docs_preprocessing_queue_url  - consumida por triaige-srv-mcp-ai
 #   results_ready_queue_url
-#   raw_documents_bucket
+#   raw_documents_bucket          - usado por triaige-srv-mcp-ai
+#   trusted_documents_bucket      - usado por triaige-srv-mcp-ai
 #   curated_results_bucket
 #   ai_service_base_url          - URL do srv-ai a partir do srv-orchestrator
 #   gemini_api_key                - chave Gemini de producao
@@ -128,6 +129,10 @@
         -e DB_URL=jdbc:mysql://{{ db_host }}:3306/triaige?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
         -e DB_USERNAME={{ db_username }}
         -e DB_PASSWORD={{ db_password }}
+        -e AWS_REGION={{ aws_region }}
+        -e DOCS_PREPROCESSING_QUEUE_URL={{ docs_preprocessing_queue_url }}
+        -e RAW_DOCUMENTS_BUCKET={{ raw_documents_bucket }}
+        -e TRUSTED_DOCUMENTS_BUCKET={{ trusted_documents_bucket }}
         -e GEMINI_API_KEY={{ gemini_api_key }}
         triaige-srv-mcp-ai:latest
       no_log: true

@@ -168,3 +168,4 @@ key-*.pem
 key-*.ppk
 key-*.pem.pub
 *.json
+terraform/.terraform.lock.hcl

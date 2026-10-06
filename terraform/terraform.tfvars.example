@@ -1,0 +1,12 @@
+# Template de variáveis do ambiente Triaige.
+# Copie para terraform.tfvars (ignorado pelo git) e ajuste os valores:
+#   cp terraform.tfvars.example terraform.tfvars
+
+aws_region           = "us-east-1"
+environment          = "dev"
+alert_email          = "ops@triaige.local"
+iam_instance_profile = "LabInstanceProfile"
+acm_certificate_arn  = ""
+
+# Sufixo dos buckets S3 pré-criados: bucket-triaige-<raw|trusted|curated>-sptech-<integrante>
+integrante = "Fulano"

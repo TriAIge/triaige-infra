@@ -27,3 +27,9 @@ variable "acm_certificate_arn" {
   type        = string
   default     = ""
 }
+
+variable "integrante" {
+  description = "Nome do integrante; sufixo dos buckets S3 pré-criados (bucket-triaige-<camada>-sptech-<integrante>)"
+  type        = string
+  default     = ""
+}
